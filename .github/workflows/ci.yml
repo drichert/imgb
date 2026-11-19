@@ -6,12 +6,17 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
       - name: Install dependencies
         run: npm install --no-audit --no-fund
+      # Temporary diagnostic to retrieve the npm-generated workspace lockfile.
+      # Removed before merging.
+      - name: Export generated lockfile for first check-in
+        run: |
+          node -e "const fs=require('node:fs');const data=JSON.stringify(fs.readFileSync('package-lock.json','utf8'));for(let i=0;i<data.length;i+=900){console.log('IMGBAE_LOCK_PART '+String(i).padStart(9,'0')+' '+data.slice(i,i+900))}"
       - name: Typecheck
         run: npm run typecheck
       - name: Build
