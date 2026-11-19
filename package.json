@@ -1,0 +1,19 @@
+{
+  "name": "imgb",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n api,web \"npm run dev -w @imgb/api\" \"npm run dev -w @imgb/web\"",
+    "build": "npm run build -w @imgb/api && npm run build -w @imgb/web",
+    "typecheck": "npm run typecheck -w @imgb/api && npm run typecheck -w @imgb/web"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "~5.8.3"
+  }
+}
