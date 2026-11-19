@@ -1,4 +1,4 @@
-# imgb
+# imgbae
 
 Image-first file browser for local and mounted-network collections.
 
