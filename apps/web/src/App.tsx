@@ -1,0 +1,269 @@
+import { useEffect, useMemo, useState } from 'react';
+import {
+  ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, File as FileIcon,
+  Folder, Image as ImageIcon, Images, Info, Search, X,
+} from 'lucide-react';
+
+type LibraryItem = {
+  name: string;
+  path: string;
+  kind: 'directory' | 'image' | 'file';
+  size: number;
+  modifiedAt: string;
+};
+type BrowseResult = {
+  path: string;
+  page: number;
+  pageSize: number;
+  total: number;
+  hasMore: boolean;
+  items: LibraryItem[];
+};
+type ImageDetails = {
+  path: string;
+  name: string;
+  size: number;
+  modifiedAt: string;
+  width: number | null;
+  height: number | null;
+  format: string | null;
+  orientation: number | null;
+  pages: number | null;
+};
+
+function currentHashPath(): string {
+  try { return decodeURIComponent(window.location.hash.replace(/^#\/?/, '')); }
+  catch { return ''; }
+}
+function resourceUrl(route: string, item: LibraryItem): string {
+  return '/api/' + route + '?path=' + encodeURIComponent(item.path) +
+    '&v=' + encodeURIComponent(item.modifiedAt);
+}
+function friendlySize(value: number): string {
+  if (!value) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const power = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
+  return (value / (1024 ** power)).toFixed(power === 0 ? 0 : 1) + ' ' + units[power];
+}
+function friendlyDate(value: string): string {
+  return new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+function viewUrl(item: LibraryItem): string {
+  return resourceUrl(/\.(png|jpe?g|webp|gif|avif)$/i.test(item.name) ? 'image' : 'preview', item);
+}
+function breadcrumbs(path: string) {
+  const parts = path.split('/').filter(Boolean);
+  return [{ name: 'Library', path: '' }, ...parts.map((name, i) => ({
+    name, path: parts.slice(0, i + 1).join('/'),
+  }))];
+}
+
+export default function App() {
+  const [folder, setFolder] = useState(currentHashPath);
+  const [page, setPage] = useState(0);
+  const [browse, setBrowse] = useState<BrowseResult | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [filter, setFilter] = useState('');
+  const [selected, setSelected] = useState<string | null>(null);
+  const [details, setDetails] = useState<ImageDetails | null>(null);
+
+  useEffect(() => {
+    const onHashChange = () => { setFolder(currentHashPath()); setPage(0); setFilter(''); setSelected(null); };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setError('');
+    setBrowse(null);
+    const query = new URLSearchParams({ path: folder, page: String(page) });
+    fetch('/api/browse?' + query, { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Could not open this folder (' + response.status + ')');
+        return await response.json() as BrowseResult;
+      })
+      .then(setBrowse)
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Unable to connect to imgb API');
+      })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [folder, page]);
+
+  useEffect(() => {
+    if (!selected) { setDetails(null); return; }
+    const controller = new AbortController();
+    setDetails(null);
+    fetch('/api/details?path=' + encodeURIComponent(selected), { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Details unavailable');
+        return await response.json() as ImageDetails;
+      })
+      .then(setDetails)
+      .catch(() => { /* Image stays viewable even if metadata cannot be loaded. */ });
+    return () => controller.abort();
+  }, [selected]);
+
+  const visible = useMemo(() => {
+    return (browse?.items || []).filter((item) => item.name.toLowerCase().includes(filter.toLowerCase()));
+  }, [browse, filter]);
+  const images = useMemo(() => (browse?.items || []).filter((item) => item.kind === 'image'), [browse]);
+  const selectedIndex = images.findIndex((item) => item.path === selected);
+  const selectedItem = selectedIndex >= 0 ? images[selectedIndex] : null;
+
+  function navigate(path: string) {
+    setSelected(null);
+    setPage(0);
+    setFilter('');
+    if (path === folder) return;
+    window.location.hash = '/' + encodeURIComponent(path);
+  }
+  function changePage(next: number) {
+    setSelected(null);
+    setFilter('');
+    setPage(next);
+    window.scrollTo(0, 0);
+  }
+  function moveViewer(direction: number) {
+    if (!images.length || selectedIndex < 0) return;
+    const next = (selectedIndex + direction + images.length) % images.length;
+    setSelected(images[next].path);
+  }
+
+  useEffect(() => {
+    if (!selected) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSelected(null);
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        if (selectedIndex >= 0 && images.length) setSelected(images[(selectedIndex - 1 + images.length) % images.length].path);
+      }
+      if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        if (selectedIndex >= 0 && images.length) setSelected(images[(selectedIndex + 1) % images.length].path);
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [selected, selectedIndex, images]);
+
+  const imageCount = browse?.items.filter((item) => item.kind === 'image').length || 0;
+  const totalPages = browse ? Math.max(1, Math.ceil(browse.total / browse.pageSize)) : 1;
+
+  return (
+    <div className="shell">
+      <aside className="sidebar">
+        <div className="identity"><span className="mark"><Images size={23} strokeWidth={1.8} /></span>
+          <span className="brand">imgb<span className="brand-dot">.</span></span>
+        </div>
+        <div className="side-label">WORKSPACE</div>
+        <button className={'side-entry ' + (folder === '' ? 'active' : '')} onClick={() => navigate('')}>
+          <Images size={17} strokeWidth={1.7} /> Image library
+        </button>
+        <div className="side-footer">
+          <div className="side-label">MILESTONE 01</div>
+          <p>Browse and view</p>
+          <small>Read-only mode</small>
+        </div>
+      </aside>
+
+      <main className="workspace">
+        <header className="topbar">
+          <div className="pathbar" aria-label="Folder path">
+            {breadcrumbs(folder).map((crumb, i) => (
+              <span className="path-part" key={crumb.path}>
+                {i > 0 && <ChevronRight size={15} className="path-chevron" />}
+                <button className={i === breadcrumbs(folder).length - 1 ? 'current' : ''} onClick={() => navigate(crumb.path)}>{crumb.name}</button>
+              </span>
+            ))}
+          </div>
+          <span className="read-only"><span className="status-dot" /> READ ONLY</span>
+        </header>
+
+        <div className="content">
+          <div className="heading">
+            <div>
+              <div className="eyebrow">YOUR COLLECTION</div>
+              <h1>{folder ? folder.split('/').pop() : 'Image library'}</h1>
+              <p className="subtitle">Browse your images, explore folders, and view details.</p>
+            </div>
+            {folder && <button className="back-button" onClick={() => navigate(folder.split('/').slice(0, -1).join('/'))}>
+              <ArrowLeft size={16} /> Up one folder
+            </button>}
+          </div>
+
+          <div className="toolbar">
+            <div className="filter-wrap"><Search size={17} /><input
+              aria-label="Filter files on this page" placeholder="Filter this page..."
+              value={filter} onChange={(event) => setFilter(event.target.value)}
+            />{filter && <button aria-label="Clear filter" onClick={() => setFilter('')}><X size={15} /></button>}</div>
+            <span className="counter">{browse ? browse.total.toLocaleString() + ' entries · ' + imageCount + ' images on page' : 'Loading library'}</span>
+          </div>
+
+          {error && <div className="message error"><strong>Unable to open library</strong><p>{error}</p><small>Check that the API is running and IMGB_ROOT points to a readable folder.</small></div>}
+          {loading && !error && <div className="message">Loading folder...</div>}
+          {!loading && !error && visible.length === 0 && <div className="message">
+            <ImageIcon size={28} strokeWidth={1.4}/><strong>{filter ? 'No matching items' : 'This folder is empty'}</strong>
+            <p>{filter ? 'Try a different filename filter.' : 'Navigate to another folder to find images.'}</p>
+          </div>}
+
+          <div className="gallery">
+            {visible.map((item) => (
+              <button key={item.path} className={'tile ' + (item.kind === 'directory' ? 'folder-tile' : '')}
+                onClick={() => item.kind === 'directory' ? navigate(item.path) : item.kind === 'image' ? setSelected(item.path) : undefined}
+                disabled={item.kind === 'file'} title={item.name}>
+                <div className="tile-preview">
+                  {item.kind === 'image'
+                    ? <img src={resourceUrl('thumbnail', item)} loading="lazy" alt="" />
+                    : item.kind === 'directory'
+                      ? <Folder size={45} strokeWidth={1.1} />
+                      : <FileIcon size={38} strokeWidth={1.1} />}
+                </div>
+                <div className="tile-info">
+                  <div className="tile-name">{item.name}</div>
+                  <div className="tile-sub">{item.kind === 'directory' ? 'Folder' : friendlySize(item.size)}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {browse && totalPages > 1 && <div className="pagination">
+            <button onClick={() => changePage(Math.max(0, page - 1))} disabled={page === 0}><ChevronLeft size={16} /> Previous</button>
+            <span>Page {page + 1} of {totalPages}</span>
+            <button onClick={() => changePage(page + 1)} disabled={!browse.hasMore}>Next <ChevronRight size={16} /></button>
+          </div>}
+        </div>
+      </main>
+
+      {selectedItem && <div className="lightbox" role="dialog" aria-modal="true" aria-label={'Viewing ' + selectedItem.name} onClick={() => setSelected(null)}>
+        <div className="viewer-header" onClick={(event) => event.stopPropagation()}>
+          <div className="viewer-title"><ImageIcon size={18} /><span title={selectedItem.name}>{selectedItem.name}</span></div>
+          <button className="icon-button" aria-label="Close image viewer" onClick={() => setSelected(null)}><X size={22} /></button>
+        </div>
+        <div className="viewer-body" onClick={(event) => event.stopPropagation()}>
+          <div className="viewer-canvas">
+            <button className="viewer-arrow prev" aria-label="Previous image" onClick={() => moveViewer(-1)}><ChevronLeft size={26} /></button>
+            <img src={viewUrl(selectedItem)} alt={selectedItem.name} key={selectedItem.path}/>
+            <button className="viewer-arrow next" aria-label="Next image" onClick={() => moveViewer(1)}><ChevronRight size={26} /></button>
+          </div>
+          <aside className="inspector">
+            <div className="inspector-heading"><Info size={17} /> Image details</div>
+            <div className="inspector-row"><span>Name</span><strong className="wrap-value">{selectedItem.name}</strong></div>
+            <div className="inspector-row"><span>Dimensions</span><strong>{details?.width && details?.height ? details.width + ' × ' + details.height : '—'}</strong></div>
+            <div className="inspector-row"><span>Format</span><strong>{details?.format?.toUpperCase() || '—'}</strong></div>
+            <div className="inspector-row"><span>Size</span><strong>{friendlySize(selectedItem.size)}</strong></div>
+            <div className="inspector-row"><span>Modified</span><strong>{friendlyDate(selectedItem.modifiedAt)}</strong></div>
+            <div className="inspector-note">Viewing only. Your original file is never modified.</div>
+          </aside>
+        </div>
+        <div className="viewer-footer" onClick={(event) => event.stopPropagation()}>
+          <span>{selectedIndex + 1} / {images.length} images on this page</span>
+          <span><kbd>←</kbd> <kbd>→</kbd> navigate <span className="divider-dot">·</span> <kbd>Esc</kbd> close</span>
+        </div>
+      </div>}
+    </div>
+  );
+}
