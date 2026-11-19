@@ -1,4 +1,4 @@
-# imgb roadmap
+# imgbae roadmap
 
 The user-facing product should become useful **before** any advanced processing is added. Each milestone is independently reviewable.
 

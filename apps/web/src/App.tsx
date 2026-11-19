@@ -87,7 +87,7 @@ export default function App() {
       })
       .then(setBrowse)
       .catch((cause: unknown) => {
-        if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Unable to connect to imgb API');
+        if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Unable to connect to imgbae API');
       })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
@@ -157,7 +157,7 @@ export default function App() {
     <div className="shell">
       <aside className="sidebar">
         <div className="identity"><span className="mark"><Images size={23} strokeWidth={1.8} /></span>
-          <span className="brand">imgb<span className="brand-dot">.</span></span>
+          <span className="brand">imgbae<span className="brand-dot">.</span></span>
         </div>
         <div className="side-label">WORKSPACE</div>
         <button className={'side-entry ' + (folder === '' ? 'active' : '')} onClick={() => navigate('')}>
