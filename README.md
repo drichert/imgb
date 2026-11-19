@@ -1,6 +1,6 @@
 # imgbae
 
-**imgb** is an image-first, self-hosted browser for local folders and mounted network shares.
+**imgbae** is an image-first, self-hosted browser for local folders and mounted network shares.
 
 ## Milestone 1: browse and view
 
