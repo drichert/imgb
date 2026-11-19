@@ -16,7 +16,7 @@ jobs:
       # Removed before merging.
       - name: Export generated lockfile for first check-in
         run: |
-          node -e "const fs=require('node:fs');const data=JSON.stringify(fs.readFileSync('package-lock.json','utf8'));for(let i=0;i<data.length;i+=900){console.log('IMGBAE_LOCK_PART '+String(i).padStart(9,'0')+' '+data.slice(i,i+900))}"
+          node -e "const fs=require('node:fs');const data=fs.readFileSync('package-lock.json').toString('base64');for(let i=0;i<data.length;i+=900){console.log('IMGBAE_LOCK_PART '+String(i).padStart(9,'0')+' '+data.slice(i,i+900))}"
       - name: Typecheck
         run: npm run typecheck
       - name: Build
