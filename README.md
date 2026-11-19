@@ -20,23 +20,23 @@ Node.js 22+ and a local or mounted directory containing images.
 
 ### Development
 
-\`\`\`sh
+```sh
 npm install
 IMGB_ROOT=/absolute/path/to/images npm run dev
-\`\`\`
+```
 
-Open http://localhost:5173. The API listens only on \`127.0.0.1:3001\` by default, and Vite proxies \`/api\` to it.
+Open http://localhost:5173. The API listens only on `127.0.0.1:3001` by default, and Vite proxies `/api` to it.
 
-If your images live on another LAN machine, **mount the remote share** on the machine running the API (NFS, SMB/CIFS, sshfs, etc.), then point \`IMGB_ROOT\` to the mount. The app does not require an agent on your NAS.
+If your images live on another LAN machine, **mount the remote share** on the machine running the API (NFS, SMB/CIFS, sshfs, etc.), then point `IMGB_ROOT` to the mount. The app does not require an agent on your NAS.
 
-Optional API environment variables: \`IMGB_PORT=3001\`, \`IMGB_HOST=127.0.0.1\`. Do **not** expose the unauthenticated API or Vite development server directly to the internet or an untrusted LAN. Authentication and production deployment are future milestones. Prefer an SSH tunnel for remote testing.
+Optional API environment variables: `IMGB_PORT=3001`, `IMGB_HOST=127.0.0.1`. Do **not** expose the unauthenticated API or Vite development server directly to the internet or an untrusted LAN. Authentication and production deployment are future milestones. Prefer an SSH tunnel for remote testing.
 
 ### Build
 
-\`\`\`sh
+```sh
 npm run typecheck
 npm run build
-\`\`\`
+```
 
 Build output is not yet a bundled production deployment; this first milestone is aimed at local development and review.
 
