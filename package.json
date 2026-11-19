@@ -8,9 +8,9 @@
     "apps/web"
   ],
   "scripts": {
-    "dev": "concurrently -k -n api,web \"npm run dev -w @imgb/api\" \"npm run dev -w @imgbae/web\"",
-    "build": "npm run build -w @imgb/api && npm run build -w @imgbae/web",
-    "typecheck": "npm run typecheck -w @imgb/api && npm run typecheck -w @imgbae/web"
+    "dev": "concurrently -k -n api,web \"npm run dev -w @imgbae/api\" \"npm run dev -w @imgbae/web\"",
+    "build": "npm run build -w @imgbae/api && npm run build -w @imgbae/web",
+    "typecheck": "npm run typecheck -w @imgbae/api && npm run typecheck -w @imgbae/web"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

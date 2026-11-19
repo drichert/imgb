@@ -34,6 +34,7 @@ Optional API environment variables: `IMGB_PORT=3001`, `IMGB_HOST=127.0.0.1`. Do 
 ### Build
 
 ```sh
+npm ci
 npm run typecheck
 npm run build
 ```
