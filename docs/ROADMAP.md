@@ -9,6 +9,7 @@ The user-facing product should become useful **before** any advanced processing 
 - [x] Basic image properties: dimensions, format, file size, modified date
 - [ ] Visual QA on an actual network-mounted image collection
 - [ ] Authenticated LAN access / production packaging (separate follow-up)
+- [x] Explicit private-interface LAN development binding; wildcard/public IP binding refused
 
 ## 2. Metadata and provenance
 - [ ] ComfyUI Original / ComfyUI Derived badges in grid and viewer
