@@ -83,7 +83,6 @@ kbd{font:inherit;font-size:10px;background:#252830;border:1px solid #41444c;bord
 /* Evidence badges are informational, never interactive or a proof of authenticity. */
 .provenance-chip{display:inline-flex;align-items:center;gap:5px;max-width:calc(100% - 14px);padding:5px 8px;border-radius:6px;background:#212d3fe8;border:1px solid #617dacc7;color:#d9e8ff;font-size:10px;font-weight:640;line-height:1.15;letter-spacing:.1px;white-space:nowrap;pointer-events:none}
 .tile-preview .provenance-chip{position:absolute;top:8px;left:8px;z-index:1;box-shadow:0 2px 12px #0008}
-.provenance-chip.partial{background:#2d2c32eb;border-color:#66616e;color:#e3dfe8}
 .viewer-chip{position:static;flex:none;margin-left:3px}
 .viewer-title>span:first-of-type{min-width:0;flex:0 1 auto}
 .inspector-provenance-note{font-size:11px;line-height:1.6;color:#aeb9d0;margin:14px 0 0}
