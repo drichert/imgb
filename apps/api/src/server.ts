@@ -24,7 +24,7 @@ type Item = {
 };
 type BrowseQuery = { path?: string; page?: string };
 type PathQuery = { path?: string };
-type SearchQuery = SamplerFilters & { page?: string };
+type SearchQuery = SamplerFilters & { page?: string; options?: string };
 const pageSize = 96;
 
 function pageNumber(raw: string | undefined): number {
@@ -214,8 +214,11 @@ async function main(): Promise<void> {
 
   app.get<{ Querystring: SearchQuery }>('/api/search', async (request, reply) => {
     const filters = searchFilters(request.query);
-    if (!filters) return reply.code(400).send({ error: 'Enter prompt text or valid sampler filters.' });
+    const optionsOnly = request.query.options === '1';
+    if (!optionsOnly && !filters) return reply.code(400).send({ error: 'Enter prompt text or valid sampler filters.' });
 
+    const samplers = new Map<string, string>();
+    const schedulers = new Map<string, string>();
     const page = pageNumber(request.query.page);
     const items: Item[] = [];
     const directories = [root];
@@ -243,7 +246,17 @@ async function main(): Promise<void> {
             if (!stat.isFile() || await realpath(file) !== file) continue;
             const summary = await searchSummary(file, stat.size, stat.mtimeMs, stat.ctimeMs);
             incomplete ||= summary.incomplete;
-            if (!summary.samplers.some((sampler) => matchesComfySampler(sampler, filters))) continue;
+            if (optionsOnly) {
+              for (const { settings } of summary.samplers) {
+                for (const { key, value } of settings) {
+                  const names = key === 'sampler_name' ? samplers : key === 'scheduler' ? schedulers : undefined;
+                  const name = value.trim();
+                  if (names && name && !names.has(name.toLowerCase())) names.set(name.toLowerCase(), name);
+                }
+              }
+              continue;
+            }
+            if (!filters || !summary.samplers.some((sampler) => matchesComfySampler(sampler, filters))) continue;
             if (total >= page * pageSize && items.length < pageSize) {
               items.push({
                 name: entry.name, path: publicPath(root, file), kind: 'image',
@@ -262,6 +275,10 @@ async function main(): Promise<void> {
       }
     }
 
+    if (optionsOnly) {
+      const sortNames = (names: Map<string, string>) => [...names.values()].sort((a, b) => a.localeCompare(b));
+      return { samplers: sortNames(samplers), schedulers: sortNames(schedulers), incomplete };
+    }
     return { path: '', page, pageSize, total, hasMore: (page + 1) * pageSize < total, items, incomplete };
   });
 

@@ -1,5 +1,11 @@
 import { Search } from 'lucide-react';
-import type { FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
+
+type SearchOptions = {
+  samplers: string[];
+  schedulers: string[];
+  incomplete: boolean;
+};
 
 export default function MetadataSearch({
   active, onSearch, onClear,
@@ -8,6 +14,28 @@ export default function MetadataSearch({
   onSearch: (criteria: string) => void;
   onClear: () => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const [options, setOptions] = useState<SearchOptions>();
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const controller = new AbortController();
+    setFailed(false);
+    fetch('/api/search?options=1', { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Could not load search options');
+        return await response.json() as SearchOptions;
+      })
+      .then((result) => {
+        if (!controller.signal.aborted) setOptions(result);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setFailed(true);
+      });
+    return () => controller.abort();
+  }, [open]);
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const criteria = new URLSearchParams();
@@ -19,14 +47,27 @@ export default function MetadataSearch({
   }
 
   return (
-    <details className="metadata-search">
+    <details className="metadata-search" onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary><Search size={16} aria-hidden="true" /> Search ComfyUI metadata</summary>
       <form onSubmit={submit} onReset={onClear}>
-        <p>Search PNGs across the library. Enter sampler and scheduler names as shown in ComfyUI.</p>
+        <p>Search PNGs across the library.</p>
+        {open && !options && !failed && <p role="status">Finding sampler and scheduler options…</p>}
+        {failed && <p role="status">Could not refresh filter options. Reopen search to try again.</p>}
+        {options?.incomplete && <p>Some files could not be read. Filter options may be incomplete.</p>}
         <div className="search-fields">
           <label className="search-prompt">Prompt text<input name="prompt" maxLength={2048} placeholder="Positive or negative prompt" /></label>
-          <label>Sampler<input name="sampler" maxLength={128} placeholder="e.g. euler" /></label>
-          <label>Scheduler<input name="scheduler" maxLength={128} placeholder="e.g. normal" /></label>
+          <label>Sampler
+            <select name="sampler" disabled={!options?.samplers.length}>
+              <option value="">Any sampler</option>
+              {options?.samplers.map((name) => <option key={name} value={name}>{name}</option>)}
+            </select>
+          </label>
+          <label>Scheduler
+            <select name="scheduler" disabled={!options?.schedulers.length}>
+              <option value="">Any scheduler</option>
+              {options?.schedulers.map((name) => <option key={name} value={name}>{name}</option>)}
+            </select>
+          </label>
           <label>Steps<input name="steps" type="number" min="0" step="1" /></label>
           <label>CFG<input name="cfg" type="number" min="0" step="any" /></label>
         </div>

@@ -135,7 +135,7 @@ export function matchesComfySampler(sampler: Sampler, filters: SamplerFilters): 
   const matchesSetting = (key: string, filter: string | undefined, numeric = false) =>
     filter === undefined || sampler.settings.some(({ key: settingKey, value }) =>
       settingKey === key && (numeric ? value.trim() !== '' && Number(value) === Number(filter)
-        : value.toLowerCase() === filter.toLowerCase()));
+        : value.trim().toLowerCase() === filter.toLowerCase()));
 
   return matchesSetting('sampler_name', filters.sampler)
     && matchesSetting('scheduler', filters.scheduler)
