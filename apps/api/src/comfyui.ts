@@ -1,7 +1,5 @@
 import { open, type FileHandle } from 'node:fs/promises';
 
-export type ComfyUiEvidence = 'original' | 'metadata' | null;
-
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 const MAX_CHUNKS = 256;
 const MAX_TEXT_PREFIX = 1024;
@@ -12,7 +10,7 @@ async function readBytes(file: FileHandle, length: number, position: number): Pr
   let offset = 0;
   while (offset < length) {
     const { bytesRead } = await file.read(buffer, offset, length - offset, position + offset);
-    if (bytesRead === 0) return null;
+    if (bytesRead === 0) return false;
     offset += bytesRead;
   }
   return buffer;
@@ -48,48 +46,42 @@ function metadataTag(type: string, prefix: Buffer): 'prompt' | 'workflow' | null
 }
 
 /**
- * "original" means a PNG carries native-looking ComfyUI prompt AND workflow
- * fields, not that its pixels were verified untouched. Editing software may
- * retain the fields. "metadata" means one recognized field was found.
+ * True means at least one recognizable ComfyUI PNG metadata field was found.
+ * No claim is made about whether image pixels are original or transformed.
  */
-export async function detectComfyUiEvidence(path: string): Promise<ComfyUiEvidence> {
+export async function hasComfyUiMetadata(path: string): Promise<boolean> {
   const file = await open(path, 'r');
   try {
     const { size } = await file.stat();
-    if (size < 8 + 12 + 13 + 12) return null;
+    if (size < 8 + 12 + 13 + 12) return false;
 
     const signature = await readBytes(file, 8, 0);
-    if (!signature?.equals(PNG_SIGNATURE)) return null;
+    if (!signature?.equals(PNG_SIGNATURE)) return false;
 
     let position = 8;
-    let hasPrompt = false;
-    let hasWorkflow = false;
     let seenHeader = false;
 
     for (let count = 0; count < MAX_CHUNKS && position + 12 <= size; count++) {
       const header = await readBytes(file, 8, position);
-      if (!header) return null;
+      if (!header) return false;
       const length = header.readUInt32BE(0);
       const type = header.subarray(4, 8).toString('ascii');
-      if (length > 0x7fffffff || position + length + 12 > size) return null;
+      if (length > 0x7fffffff || position + length + 12 > size) return false;
       if (!seenHeader) {
-        if (type !== 'IHDR' || length !== 13) return null;
+        if (type !== 'IHDR' || length !== 13) return false;
         seenHeader = true;
       }
 
       if (type === 'tEXt' || type === 'iTXt' || type === 'comf') {
         const prefix = await readBytes(file, Math.min(length, MAX_TEXT_PREFIX), position + 8);
-        if (!prefix) return null;
-        const tag = metadataTag(type, prefix);
-        if (tag === 'prompt') hasPrompt = true;
-        if (tag === 'workflow') hasWorkflow = true;
-        if (hasPrompt && hasWorkflow) return 'original';
+        if (!prefix) return false;
+        if (metadataTag(type, prefix)) return true;
       }
 
       position += length + 12; // skip IDAT/image data and the chunk CRC
       if (type === 'IEND') break;
     }
-    return hasPrompt || hasWorkflow ? 'metadata' : null;
+    return false;
   } finally {
     await file.close();
   }
