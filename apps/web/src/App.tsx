@@ -10,7 +10,7 @@ type LibraryItem = {
   kind: 'directory' | 'image' | 'file';
   size: number;
   modifiedAt: string;
-  comfyui: 'original' | 'metadata' | null;
+  hasComfyUiMetadata: boolean;
 };
 type BrowseResult = {
   path: string;
@@ -30,7 +30,7 @@ type ImageDetails = {
   format: string | null;
   orientation: number | null;
   pages: number | null;
-  comfyui: 'original' | 'metadata' | null;
+  hasComfyUiMetadata: boolean;
 };
 
 function currentHashPath(): string {
@@ -221,14 +221,10 @@ export default function App() {
                   {item.kind === 'image'
                     ? <>
                         <img src={resourceUrl('thumbnail', item)} loading="lazy" alt="" />
-                        {item.comfyui && <span
-                          className={'provenance-chip ' + (item.comfyui === 'original' ? 'original' : 'partial')}
-                          title={item.comfyui === 'original'
-                            ? 'Embedded ComfyUI prompt and workflow found. Not proof that pixels are unedited.'
-                            : 'Embedded ComfyUI metadata found, but not both prompt and workflow.'}
-                        ><Workflow size={12} strokeWidth={1.7} />
-                          {item.comfyui === 'original' ? 'ComfyUI Original' : 'ComfyUI metadata'}
-                        </span>}
+                        {item.hasComfyUiMetadata && <span
+                          className="provenance-chip"
+                          title="Recognized embedded ComfyUI metadata found."
+                        ><Workflow size={12} strokeWidth={1.7} /> ComfyUI metadata</span>}
                       </>
                     : item.kind === 'directory'
                       ? <Folder size={45} strokeWidth={1.1} />
@@ -254,11 +250,9 @@ export default function App() {
         <div className="viewer-header" onClick={(event) => event.stopPropagation()}>
           <div className="viewer-title">
             <ImageIcon size={18} /><span title={selectedItem.name}>{selectedItem.name}</span>
-            {selectedItem.comfyui && <span className={'provenance-chip viewer-chip ' + (selectedItem.comfyui === 'original' ? 'original' : 'partial')}
-              title="ComfyUI metadata indicates likely native output, but does not prove the pixels are unchanged."
-            ><Workflow size={12} strokeWidth={1.7} />
-              {selectedItem.comfyui === 'original' ? 'ComfyUI Original' : 'ComfyUI metadata'}
-            </span>}
+            {selectedItem.hasComfyUiMetadata && <span className="provenance-chip viewer-chip"
+              title="Recognized embedded ComfyUI metadata found."
+            ><Workflow size={12} strokeWidth={1.7} /> ComfyUI metadata</span>}
           </div>
           <button className="icon-button" aria-label="Close image viewer" onClick={() => setSelected(null)}><X size={22} /></button>
         </div>
@@ -276,15 +270,11 @@ export default function App() {
             <div className="inspector-row"><span>Size</span><strong>{friendlySize(selectedItem.size)}</strong></div>
             <div className="inspector-row"><span>Modified</span><strong>{friendlyDate(selectedItem.modifiedAt)}</strong></div>
             {selectedItem.name.toLowerCase().endsWith('.png') && <div className="inspector-row">
-              <span>ComfyUI provenance</span>
-              <strong>{(details?.comfyui ?? selectedItem.comfyui) === 'original'
-                ? 'Prompt + workflow embedded'
-                : (details?.comfyui ?? selectedItem.comfyui) === 'metadata'
-                  ? 'Partial metadata embedded'
-                  : 'Not detected'}</strong>
+              <span>ComfyUI metadata</span>
+              <strong>{(details?.hasComfyUiMetadata ?? selectedItem.hasComfyUiMetadata) ? 'Detected' : 'Not detected'}</strong>
             </div>}
-            {(details?.comfyui ?? selectedItem.comfyui) && <p className="inspector-provenance-note">
-              This is a metadata-based indicator, not proof the pixels are unchanged. An edited copy can retain ComfyUI metadata.
+            {(details?.hasComfyUiMetadata ?? selectedItem.hasComfyUiMetadata) && <p className="inspector-provenance-note">
+              Embedded metadata can survive image edits or conversion. This indicator does not verify image history.
             </p>}
             <div className="inspector-note">Viewing only. This app does not modify the selected file.</div>
           </aside>
