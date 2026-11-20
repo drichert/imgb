@@ -24,7 +24,7 @@ type Item = {
 };
 type BrowseQuery = { path?: string; page?: string };
 type PathQuery = { path?: string };
-type SearchQuery = SamplerFilters & { page?: string; options?: string };
+type SearchQuery = SamplerFilters & { page?: string; options?: string; presence?: string };
 const pageSize = 96;
 
 function pageNumber(raw: string | undefined): number {
@@ -215,7 +215,10 @@ async function main(): Promise<void> {
   app.get<{ Querystring: SearchQuery }>('/api/search', async (request, reply) => {
     const filters = searchFilters(request.query);
     const optionsOnly = request.query.options === '1';
-    if (!optionsOnly && !filters) return reply.code(400).send({ error: 'Enter prompt text or valid sampler filters.' });
+    const presenceOnly = request.query.presence === '1';
+    if (!presenceOnly && !optionsOnly && !filters) {
+      return reply.code(400).send({ error: 'Enter prompt text or valid sampler filters.' });
+    }
 
     const samplers = new Map<string, string>();
     const schedulers = new Map<string, string>();
@@ -230,8 +233,10 @@ async function main(): Promise<void> {
       try {
         if (await realpath(directory) !== directory) continue;
         const entries = await readdir(directory, { withFileTypes: true });
-        entries.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }) ||
-          (a.name < b.name ? -1 : Number(a.name > b.name)));
+        if (!presenceOnly) {
+          entries.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }) ||
+            (a.name < b.name ? -1 : Number(a.name > b.name)));
+        }
         const childDirectories: string[] = [];
         for (const entry of entries) {
           if (reply.raw.destroyed) break;
@@ -244,6 +249,10 @@ async function main(): Promise<void> {
           try {
             const stat = await lstat(file);
             if (!stat.isFile() || await realpath(file) !== file) continue;
+            if (presenceOnly) {
+              if (await metadataFor(file, stat.size, stat.mtimeMs)) return { hasComfyUiMetadata: true };
+              continue;
+            }
             const summary = await searchSummary(file, stat.size, stat.mtimeMs, stat.ctimeMs);
             incomplete ||= summary.incomplete;
             if (optionsOnly) {
@@ -275,6 +284,7 @@ async function main(): Promise<void> {
       }
     }
 
+    if (presenceOnly) return { hasComfyUiMetadata: false };
     if (optionsOnly) {
       const sortNames = (names: Map<string, string>) => [...names.values()].sort((a, b) => a.localeCompare(b));
       return { samplers: sortNames(samplers), schedulers: sortNames(schedulers), incomplete };

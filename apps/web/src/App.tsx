@@ -70,6 +70,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState('');
+  const [hasLibraryComfyMetadata, setHasLibraryComfyMetadata] = useState(false);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
   const [details, setDetails] = useState<ImageDetails | null>(null);
@@ -100,6 +101,23 @@ export default function App() {
         if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Unable to connect to imgbae API');
       })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [folder, page, search]);
+
+  useEffect(() => {
+    if (search) return;
+    const controller = new AbortController();
+    fetch('/api/search?presence=1', { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Could not check library metadata');
+        return await response.json() as { hasComfyUiMetadata: boolean };
+      })
+      .then(({ hasComfyUiMetadata }) => {
+        if (!controller.signal.aborted) setHasLibraryComfyMetadata(hasComfyUiMetadata);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setHasLibraryComfyMetadata(false);
+      });
     return () => controller.abort();
   }, [folder, page, search]);
 
@@ -214,7 +232,9 @@ export default function App() {
             </button>}
           </div>
 
-          <MetadataSearch active={Boolean(search)} onSearch={changeSearch} onClear={() => changeSearch('')} />
+          {hasLibraryComfyMetadata && (
+            <MetadataSearch active={Boolean(search)} onSearch={changeSearch} onClear={() => changeSearch('')} />
+          )}
           {browse?.incomplete && <p className="search-incomplete" role="status">Some files could not be fully searched.</p>}
 
           <div className="toolbar">
