@@ -10,7 +10,7 @@ async function readBytes(file: FileHandle, length: number, position: number): Pr
   let offset = 0;
   while (offset < length) {
     const { bytesRead } = await file.read(buffer, offset, length - offset, position + offset);
-    if (bytesRead === 0) return false;
+    if (bytesRead === 0) return null;
     offset += bytesRead;
   }
   return buffer;
