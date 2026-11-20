@@ -219,20 +219,20 @@ export default function App() {
                 disabled={item.kind === 'file'} title={item.name}>
                 <div className="tile-preview">
                   {item.kind === 'image'
-                    ? <>
-                        <img src={resourceUrl('thumbnail', item)} loading="lazy" alt="" />
-                        {item.hasComfyUiMetadata && <span
-                          className="provenance-chip"
-                          title="Recognized embedded ComfyUI metadata found."
-                        ><Workflow size={12} strokeWidth={1.7} /> ComfyUI metadata</span>}
-                      </>
+                    ? <img src={resourceUrl('thumbnail', item)} loading="lazy" alt="" />
                     : item.kind === 'directory'
                       ? <Folder size={45} strokeWidth={1.1} />
                       : <FileIcon size={38} strokeWidth={1.1} />}
                 </div>
                 <div className="tile-info">
                   <div className="tile-name">{item.name}</div>
-                  <div className="tile-sub">{item.kind === 'directory' ? 'Folder' : friendlySize(item.size)}</div>
+                  <div className="tile-sub">
+                    {item.hasComfyUiMetadata && (
+                      <img className="tile-comfy-logo" src={import.meta.env.BASE_URL + 'comfyui.svg'}
+                        width={20} height={20} alt="ComfyUI metadata detected" title="ComfyUI metadata detected" />
+                    )}
+                    {item.kind === 'directory' ? 'Folder' : friendlySize(item.size)}
+                  </div>
                 </div>
               </button>
             ))}

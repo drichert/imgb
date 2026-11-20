@@ -47,7 +47,8 @@ h1{margin:0;font-size:clamp(27px,3.5vw,37px);font-weight:690;letter-spacing:-1.2
 .folder-tile .tile-preview{background:#222630;color:#acafd2}
 .tile-info{padding:13px 14px 14px}
 .tile-name{font-size:12px;font-weight:590;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:7px}
-.tile-sub{font-size:11px;color:#8d91a0}
+.tile-sub{display:flex;align-items:center;gap:6px;min-height:20px;font-size:11px;color:#8d91a0}
+.tile-comfy-logo{display:block;flex:none}
 .message{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:11px;text-align:center;min-height:230px;background:#191b21;border:1px dashed #343842;border-radius:12px;color:#a7abba;margin-bottom:25px;padding:30px}
 .message strong{color:#eef0f4}
 .message p{margin:0;font-size:13px}
@@ -82,7 +83,6 @@ kbd{font:inherit;font-size:10px;background:#252830;border:1px solid #41444c;bord
 
 /* Evidence badges are informational, never interactive or a proof of authenticity. */
 .provenance-chip{display:inline-flex;align-items:center;gap:5px;max-width:calc(100% - 14px);padding:5px 8px;border-radius:6px;background:#212d3fe8;border:1px solid #617dacc7;color:#d9e8ff;font-size:10px;font-weight:640;line-height:1.15;letter-spacing:.1px;white-space:nowrap;pointer-events:none}
-.tile-preview .provenance-chip{position:absolute;top:8px;left:8px;z-index:1;box-shadow:0 2px 12px #0008}
 .viewer-chip{position:static;flex:none;margin-left:3px}
 .viewer-title>span:first-of-type{min-width:0;flex:0 1 auto}
 .inspector-provenance-note{font-size:11px;line-height:1.6;color:#aeb9d0;margin:14px 0 0}
