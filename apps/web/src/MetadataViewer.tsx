@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { readComfySamplers } from './comfyPrompt';
 
 type Metadata = {
   entries: { key: string; value: string; chunk: string }[];
@@ -30,6 +31,14 @@ export default function MetadataViewer({ url }: { url: string }) {
     return () => controller.abort();
   }, [open, metadata, url]);
 
+  const samplers = useMemo(() => {
+    for (const { key, value } of metadata?.entries ?? []) {
+      if (key !== 'prompt') continue;
+      const result = readComfySamplers(value);
+      if (result.length) return result;
+    }
+    return [];
+  }, [metadata]);
   const entry = metadata?.entries[field];
   const prettified = useMemo(() => {
     if (!entry || raw || !/^\s*[\[{]/.test(entry.value)) return entry?.value;
@@ -48,6 +57,29 @@ export default function MetadataViewer({ url }: { url: string }) {
         {!metadata && !failed && <p role="status">Loading metadata…</p>}
         {metadata?.incomplete && <p>Some metadata could not be read or exceeded the scan limits.</p>}
         {metadata && !metadata.entries.length && <p>No readable PNG text fields found.</p>}
+        {samplers.length > 0 && (
+          <section className="generation-settings" aria-label="Generation settings">
+            <h3>Generation settings</h3>
+            {samplers.map(({ id, type, positive, negative, settings }) => (
+              <details key={id} open={samplers.length === 1}>
+                <summary>{type} #{id}</summary>
+                <dl>
+                  {positive.length > 0 && <>
+                    <dt>Positive prompt</dt>
+                    {positive.map((text) => <dd key={text}>{text}</dd>)}
+                  </>}
+                  {negative.length > 0 && <>
+                    <dt>Negative prompt</dt>
+                    {negative.map((text) => <dd key={text}>{text}</dd>)}
+                  </>}
+                  {settings.map(({ label, value }) => (
+                    <div key={label}><dt>{label}</dt><dd>{value}</dd></div>
+                  ))}
+                </dl>
+              </details>
+            ))}
+          </section>
+        )}
         {entry && <>
           <label>
             Field

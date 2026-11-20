@@ -96,3 +96,12 @@ kbd{font:inherit;font-size:10px;background:#252830;border:1px solid #41444c;bord
 .metadata-modes{display:flex;gap:6px;margin:9px 0}
 .metadata-modes button[aria-pressed="true"]{background:#364561;border-color:#8298c0}
 .metadata-viewer pre{margin:0;padding:8px;max-height:44vh;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:#101218;border-radius:5px;color:#d5d8e3;font-size:11px;line-height:1.5}
+
+.generation-settings{margin:14px 0}
+.generation-settings h3{font-size:12px;margin:0 0 8px}
+.generation-settings details{padding:8px;border:1px solid #343842;border-radius:5px;margin:5px 0}
+.generation-settings dl{margin:8px 0 0;line-height:1.45}
+.generation-settings dl>div{display:flex;justify-content:space-between;gap:8px;margin-top:4px}
+.generation-settings dt{color:#aeb9d0}
+.generation-settings dd{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;min-width:0}
+.generation-settings dl>dd{margin:4px 0 8px}
