@@ -1,6 +1,6 @@
 import fastify from 'fastify';
 import sharp from 'sharp';
-import { detectComfyUiEvidence, type ComfyUiEvidence } from './comfyui.js';
+import { hasComfyUiMetadata } from './comfyui.js';
 import { createReadStream } from 'node:fs';
 import { lstat, realpath, readdir } from 'node:fs/promises';
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -18,7 +18,7 @@ type Item = {
   kind: 'directory' | 'image' | 'file';
   size: number;
   modifiedAt: string;
-  comfyui: ComfyUiEvidence;
+  hasComfyUiMetadata: boolean;
 };
 type BrowseQuery = { path?: string; page?: string };
 type PathQuery = { path?: string };
@@ -77,17 +77,17 @@ async function main(): Promise<void> {
   }
 
   const app = fastify({ logger: true });
-  const evidenceCache = new Map<string, ComfyUiEvidence>();
+  const metadataCache = new Map<string, boolean>();
 
-  async function evidenceFor(file: string, size: number, modified: number): Promise<ComfyUiEvidence> {
-    if (extname(file).toLowerCase() !== '.png') return null;
+  async function metadataFor(file: string, size: number, modified: number): Promise<boolean> {
+    if (extname(file).toLowerCase() !== '.png') return false;
     const key = file + '\0' + size + '\0' + modified;
-    if (evidenceCache.has(key)) return evidenceCache.get(key) ?? null;
-    const evidence = await detectComfyUiEvidence(file);
-    evidenceCache.set(key, evidence);
+    if (metadataCache.has(key)) return metadataCache.get(key) ?? false;
+    const detected = await hasComfyUiMetadata(file);
+    metadataCache.set(key, detected);
     // Small process-local cache; no disk index and no image bytes retained.
-    if (evidenceCache.size > 2048) evidenceCache.delete(evidenceCache.keys().next().value!);
-    return evidence;
+    if (metadataCache.size > 2048) metadataCache.delete(metadataCache.keys().next().value!);
+    return detected;
   }
 
   app.setErrorHandler((error, request, reply) => {
@@ -132,17 +132,17 @@ async function main(): Promise<void> {
       try {
         const stat = await lstat(file);
         if (!stat.isDirectory() && !stat.isFile()) return null;
-        let comfyui: ComfyUiEvidence = null;
+        let hasComfyUiMetadata = false;
         if (kind === 'image') {
           try {
-            comfyui = await evidenceFor(file, stat.size, stat.mtimeMs);
+            hasComfyUiMetadata = await metadataFor(file, stat.size, stat.mtimeMs);
           } catch (cause) {
             request.log.warn({ err: cause }, 'Could not inspect image metadata');
           }
         }
         return {
           name: entry.name, path: publicPath(root, file), kind,
-          size: stat.size, modifiedAt: stat.mtime.toISOString(), comfyui,
+          size: stat.size, modifiedAt: stat.mtime.toISOString(), hasComfyUiMetadata,
         };
       } catch {
         // The directory may change while it is being listed.
@@ -161,9 +161,9 @@ async function main(): Promise<void> {
   app.get<{ Querystring: PathQuery }>('/api/details', async (request) => {
     const { file } = await imageFile(request.query.path);
     const [stat, metadata] = await Promise.all([lstat(file), sharp(file).metadata()]);
-    let comfyui: ComfyUiEvidence = null;
+    let hasComfyUiMetadata = false;
     try {
-      comfyui = await evidenceFor(file, stat.size, stat.mtimeMs);
+      hasComfyUiMetadata = await metadataFor(file, stat.size, stat.mtimeMs);
     } catch (cause) {
       request.log.warn({ err: cause }, 'Could not inspect image metadata');
     }
@@ -174,7 +174,7 @@ async function main(): Promise<void> {
       width: metadata.width ?? null, height: metadata.height ?? null,
       format: metadata.format ?? null, orientation: metadata.orientation ?? null,
       pages: metadata.pages ?? null,
-      comfyui,
+      hasComfyUiMetadata,
     };
   });
 
