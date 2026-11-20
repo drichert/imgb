@@ -11,7 +11,8 @@ The user-facing product should become useful **before** any advanced processing 
 - [ ] Authenticated LAN access / production packaging (separate follow-up)
 
 ## 2. Metadata and provenance
-- [ ] ComfyUI Original / ComfyUI Derived badges in grid and viewer
+- [x] PNG ComfyUI metadata presence indicator in grid and viewer (recognized prompt or workflow field)
+- [ ] Reliable edit/derivation lineage (separate feature, not inferred from the metadata indicator)
 - [ ] Inspect ComfyUI prompt and workflow metadata; export workflow JSON
 - [ ] EXIF/IPTC/XMP and PNG metadata inspection
 - [ ] SQLite catalog, search and metadata-based filters
