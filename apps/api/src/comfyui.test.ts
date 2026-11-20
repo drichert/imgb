@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { deflateSync } from 'node:zlib';
 import { hasComfyUiMetadata } from './comfyui.js';
 
 function chunk(type: string, data: Buffer = Buffer.alloc(0)): Buffer {
@@ -52,6 +53,27 @@ test('detects ComfyUI-style PNG metadata without decoding pixels', async (t) => 
       name: 'itxt-save.png',
       bytes: png(itxtChunk('prompt', '{"3":{}}'), itxtChunk('workflow', '{"nodes":[]}')),
       expected: true,
+    },
+    {
+      name: 'compressed-text.png',
+      bytes: png(chunk('zTXt', Buffer.concat([
+        Buffer.from('workflow\0\0'),
+        deflateSync(JSON.stringify({ nodes: Array.from({ length: 4096 }, (_, id) => ({ id })) })),
+      ]))),
+      expected: true,
+    },
+    {
+      name: 'compressed-itxt.png',
+      bytes: png(chunk('iTXt', Buffer.concat([
+        Buffer.from('prompt\0\x01\0\0\0'),
+        deflateSync('{"3":{}}'),
+      ]))),
+      expected: true,
+    },
+    {
+      name: 'invalid-compressed-text.png',
+      bytes: png(textChunk('prompt', '\0invalid deflate data', 'zTXt')),
+      expected: false,
     },
     {
       name: 'apng-style.png',

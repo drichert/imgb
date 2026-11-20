@@ -1,4 +1,5 @@
 import { open, type FileHandle } from 'node:fs/promises';
+import { constants, inflateSync } from 'node:zlib';
 
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 const MAX_CHUNKS = 256;
@@ -16,21 +17,25 @@ async function readBytes(file: FileHandle, length: number, position: number): Pr
   return buffer;
 }
 
-function metadataTag(type: string, prefix: Buffer): 'prompt' | 'workflow' | null {
+function metadataTag(type: string, prefix: Buffer, truncated: boolean): 'prompt' | 'workflow' | null {
   // ComfyUI SaveImage writes uncompressed PNG tEXt chunks. Current animated
   // PNGs can instead use a private "comf" chunk, including after IDAT.
-  if (type !== 'tEXt' && type !== 'iTXt' && type !== 'comf') return null;
   const separator = prefix.indexOf(0);
   if (separator < 1 || separator > 79) return null;
   const key = prefix.subarray(0, separator).toString('latin1');
   if (key !== 'prompt' && key !== 'workflow') return null;
 
   let valueOffset = separator + 1;
-  if (type === 'iTXt') {
+  let compressed = type === 'zTXt';
+  if (compressed) {
+    if (prefix[valueOffset] !== 0) return null;
+    valueOffset++;
+  } else if (type === 'iTXt') {
     if (valueOffset + 2 > prefix.length) return null;
-    const compressed = prefix[valueOffset];
+    const flag = prefix[valueOffset];
     const method = prefix[valueOffset + 1];
-    if (compressed !== 0 || method !== 0) return null;
+    if ((flag !== 0 && flag !== 1) || method !== 0) return null;
+    compressed = flag === 1;
     valueOffset += 2;
     for (let i = 0; i < 2; i++) {
       const end = prefix.indexOf(0, valueOffset);
@@ -41,8 +46,18 @@ function metadataTag(type: string, prefix: Buffer): 'prompt' | 'workflow' | null
 
   // Checking a short prefix instead of decoding potentially megabytes of
   // untrusted workflow JSON keeps folder browsing affordable on SMB/NFS.
-  const value = prefix.subarray(valueOffset).toString('utf8').trimStart();
-  return value.startsWith('{') ? key : null;
+  let value = prefix.subarray(valueOffset);
+  if (compressed) {
+    try {
+      value = inflateSync(value, {
+        finishFlush: truncated ? constants.Z_SYNC_FLUSH : constants.Z_FINISH,
+        maxOutputLength: 1024 * 1024,
+      });
+    } catch {
+      return null;
+    }
+  }
+  return value.subarray(0, MAX_TEXT_PREFIX).toString('utf8').trimStart().startsWith('{') ? key : null;
 }
 
 /**
@@ -72,10 +87,10 @@ export async function hasComfyUiMetadata(path: string): Promise<boolean> {
         seenHeader = true;
       }
 
-      if (type === 'tEXt' || type === 'iTXt' || type === 'comf') {
+      if (type === 'tEXt' || type === 'zTXt' || type === 'iTXt' || type === 'comf') {
         const prefix = await readBytes(file, Math.min(length, MAX_TEXT_PREFIX), position + 8);
         if (!prefix) return false;
-        if (metadataTag(type, prefix)) return true;
+        if (metadataTag(type, prefix, length > prefix.length)) return true;
       }
 
       position += length + 12; // skip IDAT/image data and the chunk CRC
