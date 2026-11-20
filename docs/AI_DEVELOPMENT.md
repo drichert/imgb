@@ -12,21 +12,21 @@ The human development director establishes priorities, aesthetic and product dir
 
 ## Decision log
 
-### 2026-11-19 — Start with metadata evidence for ComfyUI originals
+### 2026-11-19 — Detect ComfyUI metadata presence, not originality
 
-**Human direction:** Make likely original ComfyUI outputs identifiable in the file manager before building a large metadata index.
+**Human direction:** Identify files carrying recognizable ComfyUI metadata in the gallery and viewer. An initial emphasis on “original” was explicitly revised: the metadata signal matters, not pixel originality.
 
-**AI implementation proposal:** Inspect native PNG metadata fields with bounded reads. Surface evidence in browse/details APIs and gallery/viewer badges; leave files untouched.
+**AI implementation proposal:** Inspect native PNG metadata fields with bounded reads. Expose one boolean metadata-presence signal in browse/details APIs and one consistently labeled gallery/viewer badge; leave files untouched.
 
-**Rejected assumption:** The presence of workflow metadata proves pixels are unedited, or its absence proves a file is derived. Both inferences are invalid; the interface and docs qualify the claim.
+**Course correction:** The director rejected the original-versus-derived classification as irrelevant to this feature. ComfyUI metadata may survive edits, and its absence does not prove a file was never produced by ComfyUI. The UI must display “ComfyUI metadata” only when recognized, without inferring image history.
 
-**Alternatives not chosen:** scanning full PNG pixel data; immediately adding SQLite; inferring provenance from filenames; claiming a Derived badge without tracked transformations.
+**Alternatives not chosen:** scanning full PNG pixel data; immediately adding SQLite; inferring metadata from filenames; assigning original/derived classifications without tracked transformations.
 
 **Verification:** Synthetic parser tests are included. Typecheck, build, visual QA and tests on real network-mounted images must still be verified before accepting this PR.
 
 ## Next review
 
-- Compare native ComfyUI PNGs with edited copies that retain or strip metadata.
+- Check images with either a prompt or workflow field, edited copies retaining metadata, and metadata-stripped PNGs.
 - Verify responsiveness on a mounted network share.
 - Define durable provenance before enabling transformations and permanent deletion.
 - Maintain project-specific LAN security and authentication gates for future write operations.
