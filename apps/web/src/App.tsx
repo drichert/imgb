@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, File as FileIcon,
-  Folder, Image as ImageIcon, Images, Info, Search, Workflow, X,
+  Folder, Image as ImageIcon, Images, Info, Search, X,
 } from 'lucide-react';
 
 type LibraryItem = {
@@ -10,7 +10,6 @@ type LibraryItem = {
   kind: 'directory' | 'image' | 'file';
   size: number;
   modifiedAt: string;
-  hasComfyUiMetadata: boolean;
 };
 type BrowseResult = {
   path: string;
@@ -30,7 +29,6 @@ type ImageDetails = {
   format: string | null;
   orientation: number | null;
   pages: number | null;
-  hasComfyUiMetadata: boolean;
 };
 
 function currentHashPath(): string {
@@ -219,13 +217,7 @@ export default function App() {
                 disabled={item.kind === 'file'} title={item.name}>
                 <div className="tile-preview">
                   {item.kind === 'image'
-                    ? <>
-                        <img src={resourceUrl('thumbnail', item)} loading="lazy" alt="" />
-                        {item.hasComfyUiMetadata && <span
-                          className="provenance-chip"
-                          title="Recognized embedded ComfyUI metadata found."
-                        ><Workflow size={12} strokeWidth={1.7} /> ComfyUI metadata</span>}
-                      </>
+                    ? <img src={resourceUrl('thumbnail', item)} loading="lazy" alt="" />
                     : item.kind === 'directory'
                       ? <Folder size={45} strokeWidth={1.1} />
                       : <FileIcon size={38} strokeWidth={1.1} />}
@@ -248,12 +240,7 @@ export default function App() {
 
       {selectedItem && <div className="lightbox" role="dialog" aria-modal="true" aria-label={'Viewing ' + selectedItem.name} onClick={() => setSelected(null)}>
         <div className="viewer-header" onClick={(event) => event.stopPropagation()}>
-          <div className="viewer-title">
-            <ImageIcon size={18} /><span title={selectedItem.name}>{selectedItem.name}</span>
-            {selectedItem.hasComfyUiMetadata && <span className="provenance-chip viewer-chip"
-              title="Recognized embedded ComfyUI metadata found."
-            ><Workflow size={12} strokeWidth={1.7} /> ComfyUI metadata</span>}
-          </div>
+          <div className="viewer-title"><ImageIcon size={18} /><span title={selectedItem.name}>{selectedItem.name}</span></div>
           <button className="icon-button" aria-label="Close image viewer" onClick={() => setSelected(null)}><X size={22} /></button>
         </div>
         <div className="viewer-body" onClick={(event) => event.stopPropagation()}>
@@ -269,14 +256,7 @@ export default function App() {
             <div className="inspector-row"><span>Format</span><strong>{details?.format?.toUpperCase() || '—'}</strong></div>
             <div className="inspector-row"><span>Size</span><strong>{friendlySize(selectedItem.size)}</strong></div>
             <div className="inspector-row"><span>Modified</span><strong>{friendlyDate(selectedItem.modifiedAt)}</strong></div>
-            {selectedItem.name.toLowerCase().endsWith('.png') && <div className="inspector-row">
-              <span>ComfyUI metadata</span>
-              <strong>{(details?.hasComfyUiMetadata ?? selectedItem.hasComfyUiMetadata) ? 'Detected' : 'Not detected'}</strong>
-            </div>}
-            {(details?.hasComfyUiMetadata ?? selectedItem.hasComfyUiMetadata) && <p className="inspector-provenance-note">
-              Embedded metadata can survive image edits or conversion. This indicator does not verify image history.
-            </p>}
-            <div className="inspector-note">Viewing only. This app does not modify the selected file.</div>
+            <div className="inspector-note">Viewing only. Your original file is never modified.</div>
           </aside>
         </div>
         <div className="viewer-footer" onClick={(event) => event.stopPropagation()}>

@@ -1,7 +1,6 @@
 import fastify from 'fastify';
 import { isIP } from 'node:net';
 import sharp from 'sharp';
-import { hasComfyUiMetadata } from './comfyui.js';
 import { createReadStream } from 'node:fs';
 import { lstat, realpath, readdir } from 'node:fs/promises';
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -19,7 +18,6 @@ type Item = {
   kind: 'directory' | 'image' | 'file';
   size: number;
   modifiedAt: string;
-  hasComfyUiMetadata: boolean;
 };
 type BrowseQuery = { path?: string; page?: string };
 type PathQuery = { path?: string };
@@ -34,22 +32,6 @@ function permittedBindHost(host: string): boolean {
 }
 
 class ForbiddenPath extends Error {}
-
-// Avoid issuing dozens of concurrent random reads against a network share.
-async function mapLimited<T, U>(
-  entries: T[], limit: number, fn: (entry: T) => Promise<U>,
-): Promise<U[]> {
-  const output = new Array<U>(entries.length);
-  let cursor = 0;
-  await Promise.all(Array.from({ length: Math.min(limit, entries.length) }, async () => {
-    while (cursor < entries.length) {
-      const i = cursor++;
-      output[i] = await fn(entries[i]);
-    }
-  }));
-  return output;
-}
-
 
 function isWithinRoot(root: string, target: string): boolean {
   const rel = relative(root, target);
@@ -87,19 +69,6 @@ async function main(): Promise<void> {
   }
 
   const app = fastify({ logger: true });
-  const metadataCache = new Map<string, boolean>();
-
-  async function metadataFor(file: string, size: number, modified: number): Promise<boolean> {
-    if (extname(file).toLowerCase() !== '.png') return false;
-    const key = file + '\0' + size + '\0' + modified;
-    if (metadataCache.has(key)) return metadataCache.get(key) ?? false;
-    const detected = await hasComfyUiMetadata(file);
-    metadataCache.set(key, detected);
-    // Small process-local cache; no disk index and no image bytes retained.
-    if (metadataCache.size > 2048) metadataCache.delete(metadataCache.keys().next().value!);
-    return detected;
-  }
-
   app.setErrorHandler((error, request, reply) => {
     const code = (error as NodeJS.ErrnoException).code;
     if (error instanceof ForbiddenPath) {
@@ -137,28 +106,20 @@ async function main(): Promise<void> {
       );
 
     const slice = entries.slice(page * pageSize, (page + 1) * pageSize);
-    const values = await mapLimited(slice, 8, async ({ entry, kind }): Promise<Item | null> => {
+    const values = await Promise.all(slice.map(async ({ entry, kind }): Promise<Item | null> => {
       const file = join(dir, entry.name);
       try {
         const stat = await lstat(file);
         if (!stat.isDirectory() && !stat.isFile()) return null;
-        let hasComfyUiMetadata = false;
-        if (kind === 'image') {
-          try {
-            hasComfyUiMetadata = await metadataFor(file, stat.size, stat.mtimeMs);
-          } catch (cause) {
-            request.log.warn({ err: cause }, 'Could not inspect image metadata');
-          }
-        }
         return {
           name: entry.name, path: publicPath(root, file), kind,
-          size: stat.size, modifiedAt: stat.mtime.toISOString(), hasComfyUiMetadata,
+          size: stat.size, modifiedAt: stat.mtime.toISOString(),
         };
       } catch {
         // The directory may change while it is being listed.
         return null;
       }
-    });
+    }));
 
     return {
       path: publicPath(root, dir),
@@ -171,12 +132,6 @@ async function main(): Promise<void> {
   app.get<{ Querystring: PathQuery }>('/api/details', async (request) => {
     const { file } = await imageFile(request.query.path);
     const [stat, metadata] = await Promise.all([lstat(file), sharp(file).metadata()]);
-    let hasComfyUiMetadata = false;
-    try {
-      hasComfyUiMetadata = await metadataFor(file, stat.size, stat.mtimeMs);
-    } catch (cause) {
-      request.log.warn({ err: cause }, 'Could not inspect image metadata');
-    }
     return {
       path: publicPath(root, file),
       name: file.split(sep).pop(),
@@ -184,7 +139,6 @@ async function main(): Promise<void> {
       width: metadata.width ?? null, height: metadata.height ?? null,
       format: metadata.format ?? null, orientation: metadata.orientation ?? null,
       pages: metadata.pages ?? null,
-      hasComfyUiMetadata,
     };
   });
 

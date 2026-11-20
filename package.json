@@ -10,8 +10,7 @@
   "scripts": {
     "dev": "concurrently -k -n api,web \"npm run dev -w @imgbae/api\" \"npm run dev -w @imgbae/web\"",
     "build": "npm run build -w @imgbae/api && npm run build -w @imgbae/web",
-    "typecheck": "npm run typecheck -w @imgbae/api && npm run typecheck -w @imgbae/web",
-    "test": "npm run test -w @imgbae/api"
+    "typecheck": "npm run typecheck -w @imgbae/api && npm run typecheck -w @imgbae/web"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
