@@ -1,6 +1,6 @@
 type Inputs = Record<string, unknown>;
 type PromptNode = { class_type: string; inputs: Inputs };
-type Setting = { label: string; value: string };
+type Setting = { key: string; label: string; value: string };
 type Sampler = {
   id: string;
   type: string;
@@ -38,16 +38,17 @@ function linkedNode(graph: Inputs, link: unknown): PromptNode | undefined {
   if (isNode(node)) return node;
 }
 
-function resolveText(graph: Inputs, input: unknown, depth = 0): string | undefined {
+function resolveText(graph: Inputs, input: unknown, showSource: boolean, depth = 0): string | undefined {
   if (typeof input === 'string') return input;
   const node = linkedNode(graph, input);
   if (!node) return;
-  const source = '[' + node.class_type + ' output]';
+  // Keep unknown runtime text from creating a match across two literal fragments.
+  const source = showSource ? '[' + node.class_type + ' output]' : '\0';
   if (depth === 12) return source;
   if (node.class_type === 'StringConcatenate') {
-    const first = resolveText(graph, node.inputs.string_a, depth + 1);
-    const second = resolveText(graph, node.inputs.string_b, depth + 1);
-    const delimiter = resolveText(graph, node.inputs.delimiter, depth + 1);
+    const first = resolveText(graph, node.inputs.string_a, showSource, depth + 1);
+    const second = resolveText(graph, node.inputs.string_b, showSource, depth + 1);
+    const delimiter = resolveText(graph, node.inputs.delimiter, showSource, depth + 1);
     if (first !== undefined && second !== undefined && delimiter !== undefined) {
       if (first.length + second.length + delimiter.length <= 64 * 1024) return first + delimiter + second;
     }
@@ -55,7 +56,7 @@ function resolveText(graph: Inputs, input: unknown, depth = 0): string | undefin
   return typeof node.inputs.value === 'string' ? node.inputs.value : source;
 }
 
-function promptTexts(graph: Inputs, conditioning: unknown): string[] {
+function promptTexts(graph: Inputs, conditioning: unknown, showSource: boolean): string[] {
   const texts = new Set<string>();
   const seen = new Set<PromptNode>();
   const pending = [conditioning];
@@ -65,7 +66,7 @@ function promptTexts(graph: Inputs, conditioning: unknown): string[] {
     seen.add(node);
     for (const [key, value] of Object.entries(node.inputs)) {
       if (/^text(?:$|_)/.test(key)) {
-        const text = resolveText(graph, value);
+        const text = resolveText(graph, value, showSource);
         if (typeof text === 'string' && text.trim()) texts.add(text);
       } else if (/^(?:conditioning|positive|negative)(?:$|_|\d)/.test(key)) {
         pending.push(value);
@@ -75,7 +76,13 @@ function promptTexts(graph: Inputs, conditioning: unknown): string[] {
   return [...texts];
 }
 
-export function readComfySamplers(prompt: string): Sampler[] {
+export function readComfySamplers(prompt: string, showSource = true): Sampler[] {
+  return readComfyPrompt(prompt, showSource).samplers;
+}
+
+export function readComfyPrompt(prompt: string, showSource = true) {
+  const samplers: Sampler[] = [];
+  const nodeTypes = new Set<string>();
   let graph: unknown;
   try {
     graph = JSON.parse(prompt, (_key, value: unknown, context?: { source?: string }) => {
@@ -85,13 +92,14 @@ export function readComfySamplers(prompt: string): Sampler[] {
       return value;
     });
   } catch {
-    return [];
+    return { samplers, nodeTypes };
   }
-  if (!isRecord(graph)) return [];
+  if (!isRecord(graph)) return { samplers, nodeTypes };
 
-  const samplers: Sampler[] = [];
   for (const [id, node] of Object.entries(graph)) {
-    if (!isNode(node) || !['KSampler', 'KSamplerAdvanced', 'SamplerCustom', 'SamplerCustomAdvanced'].includes(node.class_type)) continue;
+    if (!isNode(node)) continue;
+    if (node.class_type) nodeTypes.add(node.class_type);
+    if (!['KSampler', 'KSamplerAdvanced', 'SamplerCustom', 'SamplerCustomAdvanced'].includes(node.class_type)) continue;
     const { inputs } = node;
     const guider = linkedNode(graph, inputs.guider)?.inputs;
     const settings = {
@@ -104,15 +112,52 @@ export function readComfySamplers(prompt: string): Sampler[] {
     samplers.push({
       id,
       type: node.class_type,
-      positive: promptTexts(graph, inputs.positive ?? guider?.positive ?? guider?.conditioning),
-      negative: promptTexts(graph, inputs.negative ?? guider?.negative),
+      positive: promptTexts(graph, inputs.positive ?? guider?.positive ?? guider?.conditioning, showSource),
+      negative: promptTexts(graph, inputs.negative ?? guider?.negative, showSource),
       settings: Object.entries(settingLabels).flatMap(([key, label]) => {
         const input = settings[key];
         const value = linkedNode(graph, input)?.inputs.value ?? input;
         return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
-          ? [{ label, value: String(value) }] : [];
+          ? [{ key, label, value: String(value) }] : [];
       }),
     });
   }
-  return samplers;
+  return { samplers, nodeTypes };
+}
+
+export function readWorkflowNodeTypes(workflow: string): string[] {
+  let graph: unknown;
+  try {
+    graph = JSON.parse(workflow);
+  } catch {
+    return [];
+  }
+  if (!isRecord(graph) || !Array.isArray(graph.nodes)) return [];
+  return graph.nodes.flatMap((node: unknown) =>
+    isRecord(node) && typeof node.type === 'string' && node.type ? [node.type] : []);
+}
+
+export type SamplerFilters = {
+  prompt?: string;
+  sampler?: string;
+  scheduler?: string;
+  steps?: string;
+  cfg?: string;
+};
+
+export function matchesComfySampler(sampler: Sampler, filters: SamplerFilters): boolean {
+  const prompt = filters.prompt?.toLowerCase();
+  if (prompt && ![...sampler.positive, ...sampler.negative].some(
+    (text) => text.toLowerCase().includes(prompt),
+  )) return false;
+
+  const matchesSetting = (key: string, filter: string | undefined, numeric = false) =>
+    filter === undefined || sampler.settings.some(({ key: settingKey, value }) =>
+      settingKey === key && (numeric ? value.trim() !== '' && Number(value) === Number(filter)
+        : value.trim().toLowerCase() === filter.toLowerCase()));
+
+  return matchesSetting('sampler_name', filters.sampler)
+    && matchesSetting('scheduler', filters.scheduler)
+    && matchesSetting('steps', filters.steps, true)
+    && matchesSetting('cfg', filters.cfg, true);
 }

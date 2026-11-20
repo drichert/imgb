@@ -1,6 +1,7 @@
 import fastify from 'fastify';
 import { isIP } from 'node:net';
 import sharp from 'sharp';
+import { matchesComfySampler, readComfyPrompt, readWorkflowNodeTypes, type SamplerFilters } from './comfyPrompt.js';
 import { hasComfyUiMetadata, readPngTextMetadata } from './comfyui.js';
 import { createReadStream } from 'node:fs';
 import { lstat, realpath, readdir } from 'node:fs/promises';
@@ -23,6 +24,33 @@ type Item = {
 };
 type BrowseQuery = { path?: string; page?: string };
 type PathQuery = { path?: string };
+type SearchQuery = SamplerFilters & { page?: string; options?: string; presence?: string; node?: string | string[] };
+const pageSize = 96;
+
+function pageNumber(raw: string | undefined): number {
+  const page = Number(raw ?? '0');
+  return Number.isSafeInteger(page) ? Math.max(0, Math.min(page, 100000)) : 0;
+}
+
+function searchNumber(value: string, key: 'steps' | 'cfg'): number | undefined {
+  if (!/^\+?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(value)) return;
+  const number = Number(value);
+  if (Number.isFinite(number) && (key === 'cfg' || Number.isSafeInteger(number))) return number;
+}
+
+function searchFilters(query: SearchQuery): SamplerFilters | null {
+  const filters: SamplerFilters = {};
+  for (const key of ['prompt', 'sampler', 'scheduler', 'steps', 'cfg'] as const) {
+    const raw = query[key];
+    if (raw === undefined) continue;
+    if (typeof raw !== 'string' || raw.length > 2048 || raw.includes('\0')) return null;
+    const value = raw.trim();
+    if (!value) continue;
+    if ((key === 'steps' || key === 'cfg') && searchNumber(value, key) === undefined) return null;
+    filters[key] = value;
+  }
+  return filters;
+}
 
 
 function permittedBindHost(host: string): boolean {
@@ -118,9 +146,7 @@ async function main(): Promise<void> {
     const dir = await resolveSafe(request.query.path);
     if (!(await lstat(dir)).isDirectory()) throw new ForbiddenPath('Not a directory');
 
-    const pageSize = 96;
-    const rawPage = Number(request.query.page ?? '0');
-    const page = Number.isSafeInteger(rawPage) ? Math.max(0, Math.min(rawPage, 100000)) : 0;
+    const page = pageNumber(request.query.page);
     const entries = (await readdir(dir, { withFileTypes: true }))
       // Deliberately exclude symlinks in v1; the root itself may be a symlink.
       .filter((entry) => entry.isDirectory() || entry.isFile())
@@ -166,6 +192,141 @@ async function main(): Promise<void> {
       hasMore: (page + 1) * pageSize < entries.length,
       items: values.filter((value): value is Item => value !== null),
     };
+  });
+
+  const searchCache = new Map<string, {
+    version: string;
+    incomplete: boolean;
+    samplers: ReturnType<typeof readComfyPrompt>['samplers'];
+    nodeTypes: Set<string>;
+  }>();
+
+  async function searchSummary(file: string, size: number, modified: number, changed: number) {
+    const version = size + ':' + modified + ':' + changed;
+    const cached = searchCache.get(file);
+    if (cached?.version === version) return cached;
+    const { entries, incomplete } = await readPngTextMetadata(file, ['prompt', 'workflow']);
+    const samplers: ReturnType<typeof readComfyPrompt>['samplers'] = [];
+    const nodeTypes = new Set<string>();
+    for (const { key, value } of entries) {
+      if (key !== 'prompt') continue;
+      const prompt = readComfyPrompt(value, false);
+      for (const sampler of prompt.samplers) samplers.push(sampler);
+      for (const type of prompt.nodeTypes) nodeTypes.add(type);
+    }
+    if (!nodeTypes.size) {
+      for (const { key, value } of entries) {
+        if (key !== 'workflow') continue;
+        for (const type of readWorkflowNodeTypes(value)) nodeTypes.add(type);
+      }
+    }
+    const summary = { version, incomplete, samplers, nodeTypes };
+    searchCache.delete(file);
+    if (JSON.stringify([samplers, [...nodeTypes]]).length <= 16_384) {
+      searchCache.set(file, summary);
+      if (searchCache.size > 2048) searchCache.delete(searchCache.keys().next().value!);
+    }
+    return summary;
+  }
+
+  app.get<{ Querystring: SearchQuery }>('/api/search', async (request, reply) => {
+    const filters = searchFilters(request.query);
+    const optionsOnly = request.query.options === '1';
+    const presenceOnly = request.query.presence === '1';
+    const requestedNodes = Array.isArray(request.query.node) ? request.query.node :
+      request.query.node === undefined ? [] : [request.query.node];
+    const hasSamplerFilters = filters !== null && Object.keys(filters).length > 0;
+    if (!presenceOnly && !optionsOnly && (
+      !filters || (!hasSamplerFilters && !requestedNodes.length) ||
+      requestedNodes.some((name) => !name.trim() || name.length > 2048 || name.includes('\0'))
+    )) {
+      return reply.code(400).send({ error: 'Enter prompt text or select valid metadata filters.' });
+    }
+
+    const nodeOptions = new Set<string>();
+    const samplers = new Map<string, string>();
+    const schedulers = new Map<string, string>();
+    const steps = new Set<number>();
+    const cfg = new Set<number>();
+    const page = pageNumber(request.query.page);
+    const items: Item[] = [];
+    const directories = [root];
+    let total = 0;
+    let incomplete = false;
+
+    while (directories.length && !reply.raw.destroyed) {
+      const directory = directories.pop()!;
+      try {
+        if (await realpath(directory) !== directory) continue;
+        const entries = await readdir(directory, { withFileTypes: true });
+        if (!presenceOnly) {
+          entries.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }) ||
+            (a.name < b.name ? -1 : Number(a.name > b.name)));
+        }
+        const childDirectories: string[] = [];
+        for (const entry of entries) {
+          if (reply.raw.destroyed) break;
+          const file = join(directory, entry.name);
+          if (entry.isDirectory()) {
+            childDirectories.push(file);
+            continue;
+          }
+          if (!entry.isFile() || extname(file).toLowerCase() !== '.png') continue;
+          try {
+            const stat = await lstat(file);
+            if (!stat.isFile() || await realpath(file) !== file) continue;
+            if (presenceOnly) {
+              if (await metadataFor(file, stat.size, stat.mtimeMs)) return { hasComfyUiMetadata: true };
+              continue;
+            }
+            const summary = await searchSummary(file, stat.size, stat.mtimeMs, stat.ctimeMs);
+            incomplete ||= summary.incomplete;
+            if (optionsOnly) {
+              for (const type of summary.nodeTypes) nodeOptions.add(type);
+              for (const { settings } of summary.samplers) {
+                for (const { key, value } of settings) {
+                  const names = key === 'sampler_name' ? samplers : key === 'scheduler' ? schedulers : undefined;
+                  const name = value.trim();
+                  if (names && name && !names.has(name.toLowerCase())) names.set(name.toLowerCase(), name);
+                  if (key === 'steps' || key === 'cfg') {
+                    const number = searchNumber(name, key);
+                    if (number !== undefined) (key === 'steps' ? steps : cfg).add(number);
+                  }
+                }
+              }
+              continue;
+            }
+            if (!requestedNodes.every((type) => summary.nodeTypes.has(type))) continue;
+            if (hasSamplerFilters && !summary.samplers.some((sampler) => matchesComfySampler(sampler, filters))) continue;
+            if (total >= page * pageSize && items.length < pageSize) {
+              items.push({
+                name: entry.name, path: publicPath(root, file), kind: 'image',
+                size: stat.size, modifiedAt: stat.mtime.toISOString(), hasComfyUiMetadata: true,
+              });
+            }
+            total++;
+          } catch {
+            incomplete = true;
+          }
+        }
+        for (const child of childDirectories.reverse()) directories.push(child);
+      } catch (error) {
+        if (directory === root) throw error;
+        incomplete = true;
+      }
+    }
+
+    if (presenceOnly) return { hasComfyUiMetadata: false };
+    if (optionsOnly) {
+      const sortNames = (names: Map<string, string>) => [...names.values()].sort((a, b) => a.localeCompare(b));
+      const sortNumbers = (numbers: Set<number>) => [...numbers].sort((a, b) => a - b);
+      return {
+        samplers: sortNames(samplers), schedulers: sortNames(schedulers),
+        steps: sortNumbers(steps), cfg: sortNumbers(cfg),
+        nodes: [...nodeOptions].sort((a, b) => a.localeCompare(b)), incomplete,
+      };
+    }
+    return { path: '', page, pageSize, total, hasMore: (page + 1) * pageSize < total, items, incomplete };
   });
 
   app.get<{ Querystring: PathQuery }>('/api/details', async (request) => {

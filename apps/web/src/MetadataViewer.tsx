@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { readComfySamplers } from './comfyPrompt';
+import { readComfySamplers } from '../../api/src/comfyPrompt';
 
 type Metadata = {
   entries: { key: string; value: string; chunk: string }[];
