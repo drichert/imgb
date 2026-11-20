@@ -4,6 +4,8 @@ import { useEffect, useState, type FormEvent } from 'react';
 type SearchOptions = {
   samplers: string[];
   schedulers: string[];
+  steps: number[];
+  cfg: number[];
   incomplete: boolean;
 };
 
@@ -50,8 +52,8 @@ export default function MetadataSearch({
     <details className="metadata-search" onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary><Search size={16} aria-hidden="true" /> Search ComfyUI metadata</summary>
       <form onSubmit={submit} onReset={onClear}>
-        <p>Search PNGs across the library.</p>
-        {open && !options && !failed && <p role="status">Finding sampler and scheduler options…</p>}
+        <p>Search PNGs across the library. For Steps and CFG, type a value or choose a suggestion.</p>
+        {open && !options && !failed && <p role="status">Finding filter options…</p>}
         {failed && <p role="status">Could not refresh filter options. Reopen search to try again.</p>}
         {options?.incomplete && <p>Some files could not be read. Filter options may be incomplete.</p>}
         <div className="search-fields">
@@ -68,8 +70,14 @@ export default function MetadataSearch({
               {options?.schedulers.map((name) => <option key={name} value={name}>{name}</option>)}
             </select>
           </label>
-          <label>Steps<input name="steps" type="number" min="0" step="1" /></label>
-          <label>CFG<input name="cfg" type="number" min="0" step="any" /></label>
+          <label>Steps<input name="steps" type="number" min="0" step="1" list="search-step-values" /></label>
+          <datalist id="search-step-values">
+            {options?.steps?.map((value) => <option key={value} value={value} />)}
+          </datalist>
+          <label>CFG<input name="cfg" type="number" min="0" step="any" list="search-cfg-values" /></label>
+          <datalist id="search-cfg-values">
+            {options?.cfg?.map((value) => <option key={value} value={value} />)}
+          </datalist>
         </div>
         <div className="search-actions">
           <button type="submit">Search library</button>

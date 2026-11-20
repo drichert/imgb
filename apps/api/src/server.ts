@@ -32,6 +32,12 @@ function pageNumber(raw: string | undefined): number {
   return Number.isSafeInteger(page) ? Math.max(0, Math.min(page, 100000)) : 0;
 }
 
+function searchNumber(value: string, key: 'steps' | 'cfg'): number | undefined {
+  if (!/^\+?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(value)) return;
+  const number = Number(value);
+  if (Number.isFinite(number) && (key === 'cfg' || Number.isSafeInteger(number))) return number;
+}
+
 function searchFilters(query: SearchQuery): SamplerFilters | null {
   const filters: SamplerFilters = {};
   for (const key of ['prompt', 'sampler', 'scheduler', 'steps', 'cfg'] as const) {
@@ -40,10 +46,7 @@ function searchFilters(query: SearchQuery): SamplerFilters | null {
     if (typeof raw !== 'string' || raw.length > 2048 || raw.includes('\0')) return null;
     const value = raw.trim();
     if (!value) continue;
-    if (key === 'steps' || key === 'cfg') {
-      if (!/^\+?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(value) || !Number.isFinite(Number(value))) return null;
-      if (key === 'steps' && !Number.isSafeInteger(Number(value))) return null;
-    }
+    if ((key === 'steps' || key === 'cfg') && searchNumber(value, key) === undefined) return null;
     filters[key] = value;
   }
   return Object.keys(filters).length ? filters : null;
@@ -222,6 +225,8 @@ async function main(): Promise<void> {
 
     const samplers = new Map<string, string>();
     const schedulers = new Map<string, string>();
+    const steps = new Set<number>();
+    const cfg = new Set<number>();
     const page = pageNumber(request.query.page);
     const items: Item[] = [];
     const directories = [root];
@@ -261,6 +266,10 @@ async function main(): Promise<void> {
                   const names = key === 'sampler_name' ? samplers : key === 'scheduler' ? schedulers : undefined;
                   const name = value.trim();
                   if (names && name && !names.has(name.toLowerCase())) names.set(name.toLowerCase(), name);
+                  if (key === 'steps' || key === 'cfg') {
+                    const number = searchNumber(name, key);
+                    if (number !== undefined) (key === 'steps' ? steps : cfg).add(number);
+                  }
                 }
               }
               continue;
@@ -287,7 +296,11 @@ async function main(): Promise<void> {
     if (presenceOnly) return { hasComfyUiMetadata: false };
     if (optionsOnly) {
       const sortNames = (names: Map<string, string>) => [...names.values()].sort((a, b) => a.localeCompare(b));
-      return { samplers: sortNames(samplers), schedulers: sortNames(schedulers), incomplete };
+      const sortNumbers = (numbers: Set<number>) => [...numbers].sort((a, b) => a - b);
+      return {
+        samplers: sortNames(samplers), schedulers: sortNames(schedulers),
+        steps: sortNumbers(steps), cfg: sortNumbers(cfg), incomplete,
+      };
     }
     return { path: '', page, pageSize, total, hasMore: (page + 1) * pageSize < total, items, incomplete };
   });
