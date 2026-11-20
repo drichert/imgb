@@ -1,32 +1,26 @@
-# ComfyUI image provenance: initial indicator
+# ComfyUI metadata indicator
 
-This implementation detects **likely native ComfyUI PNG output** without modifying images.
+imgbae shows one **ComfyUI metadata** indicator when it recognizes embedded ComfyUI-style generation metadata in a PNG. The badge is present in the gallery and image viewer; the details panel reports detected / not detected.
 
-## Indicators
+## Detection rule
 
-- **ComfyUI Original:** both native-looking JSON `prompt` and `workflow` fields were recognized in PNG text metadata.
-- **ComfyUI metadata:** only one such field was found.
-- **No badge:** neither was recognized, the file is not PNG, or metadata could not be read.
+- The backend returns `hasComfyUiMetadata: true` when a recognized PNG `prompt` **or** `workflow` text field contains a JSON-object-looking value.
+- It recognizes uncompressed PNG `tEXt`, uncompressed `iTXt`, and the `comf` chunk used in certain animated ComfyUI PNGs.
+- No indicator means **not detected**, rather than a claim that the file was never generated or processed in ComfyUI.
+- This is **metadata presence**, not proof of original pixels, authorship, unmodified images, or generation history. Files can retain these fields after editing.
 
-Both statuses are returned by the browse and details APIs as `comfyui: "original" | "metadata" | null`. Gallery tiles and the viewer display badges; the inspector explains the evidence.
+The API uses a boolean property in browse and image details responses. The indicator does not alter the file or grant permission for any operation.
 
-**Important:** “Original” is shorthand for *native-looking ComfyUI save metadata*, **not proof that the pixels are unchanged**. Edits, resizing, upscaling or copies can retain both fields. Genuine ComfyUI output can lack metadata when disabled or stripped. A reliable **Derived** designation requires lineage recorded when imgbae transforms a file or other explicit verification. Do not infer it from missing metadata or filename suffixes.
+## Performance and known limitations
 
-## Implementation and limits
+The detector checks PNG signature/chunk structure and inspects at most 1 KiB of each candidate metadata chunk. It skips image pixel data, stops after 256 chunks, and scans no more than eight gallery items concurrently. A process-local cache is bounded to 2048 entries and keyed by real path, file size, and modification time.
 
-- PNG signature and basic chunk framing are checked.
-- Detect `prompt` and `workflow` in standard uncompressed `tEXt`, uncompressed `iTXt`, and animated PNG `comf` chunks.
-- Inspect at most a 1 KiB prefix of each metadata chunk; skip large IDAT chunks using file positions, with a 256-chunk scan cap.
-- Do not parse entire untrusted graph JSON, inspect pixels, verify PNG CRCs, or decode `zTXt` / compressed `iTXt`.
-- Inspect at most eight directory entries concurrently and keep a bounded 2048-entry in-process cache keyed by real path, file size and mtime.
-- Status is informational only. It is **not an authorization, authenticity or deletion signal**.
-
-ComfyUI's built-in SaveImage normally writes a `prompt` and optional `extra_pnginfo` fields, commonly `workflow`, into PNG text. See [ComfyUI SaveImage](https://github.com/Comfy-Org/docs/blob/main/built-in-nodes/SaveImage.mdx) and [workflow metadata](https://github.com/Comfy-Org/docs/blob/main/development/api-development/workflow-metadata.mdx).
+It does not decode compressed PNG text, validate complete JSON or CRCs, read every possible custom-node metadata format, or detect ComfyUI fields embedded in non-PNG formats. If metadata changes without size or mtime changing, the process cache can be stale.
 
 ## Verification
 
 Run `npm ci && npm run typecheck && npm run test && npm run build`.
 
-The parser tests exercise synthetic PNG chunk streams with complete, partial, malformed and missing metadata, including `iTXt` and `comf`. They do not verify full image decoding, NAS performance, or visual results.
+Parser tests cover full, partial, absent, malformed and animated-PNG-style metadata using synthetic fixtures. Manual testing with actual ComfyUI SaveImage outputs, a metadata-stripped image, and an edited image retaining metadata remains necessary. Network-share responsiveness is also unverified.
 
-For manual QA, test a native ComfyUI SaveImage PNG, a metadata-stripped PNG, an ordinary photograph and an edited PNG that preserves ComfyUI metadata. Confirm the labels communicate *evidence*, not pixel authenticity; check gallery performance over the real mounted share.
+A future metadata inspector can expose exact recognized fields and workflow JSON. A separate provenance system may track transformations, but that should not change the meaning of this badge.
