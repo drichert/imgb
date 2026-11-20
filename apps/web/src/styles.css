@@ -105,3 +105,15 @@ kbd{font:inherit;font-size:10px;background:#252830;border:1px solid #41444c;bord
 .generation-settings dt{color:#aeb9d0}
 .generation-settings dd{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;min-width:0}
 .generation-settings dl>dd{margin:4px 0 8px}
+
+.metadata-search{margin-bottom:16px;padding:12px 14px;background:#1a1c22;border:1px solid #343842;border-radius:8px;font-size:13px}
+.metadata-search summary{cursor:pointer;font-weight:600}
+.metadata-search summary svg{vertical-align:middle;margin:0 5px;color:#aeb9d0}
+.metadata-search p,.search-incomplete{color:#aeb9d0;font-size:12px}
+.search-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:10px}
+.search-fields label{display:grid;gap:6px;color:#c7cad6}
+.search-fields .search-prompt{grid-column:1/-1}
+.search-fields input,.search-actions button{min-width:0;padding:8px;background:#242630;border:1px solid #434754;border-radius:5px;color:inherit;font:inherit}
+.search-actions{display:flex;gap:8px;margin-top:12px}
+.search-actions button[type=submit]{background:#364561;border-color:#8298c0}
+.tile-location{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#aeb9d0;font-size:11px;margin-bottom:5px}

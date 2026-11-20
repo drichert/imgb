@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { deflateSync } from 'node:zlib';
+import { matchesComfySampler, readComfySamplers } from './comfyPrompt.js';
 import { hasComfyUiMetadata, readPngTextMetadata } from './comfyui.js';
 
 function chunk(type: string, data: Buffer = Buffer.alloc(0)): Buffer {
@@ -136,4 +137,30 @@ test('extracts decoded PNG text without changing field order or raw values', asy
     incomplete: false,
     entries: [{ key: 'workflow', value: workflow, chunk: 'zTXt' }],
   });
+});
+
+test('matches prompt and sampler settings from the same ComfyUI pass', () => {
+  const samplers = readComfySamplers(JSON.stringify({
+    positive: { class_type: 'CLIPTextEncode', inputs: { text: 'Rainy forest' } },
+    negative: { class_type: 'CLIPTextEncode', inputs: { text: 'Motion blur' } },
+    generated: { class_type: 'CaptionGenerator', inputs: {} },
+    encoded: { class_type: 'CLIPTextEncode', inputs: { text: ['generated', 0] } },
+    first: {
+      class_type: 'KSampler',
+      inputs: { positive: ['positive', 0], negative: ['negative', 0], sampler_name: 'euler', scheduler: 'normal', steps: 20, cfg: 4.5 },
+    },
+    second: {
+      class_type: 'KSamplerAdvanced',
+      inputs: { positive: ['encoded', 0], sampler_name: 'heun', scheduler: 'karras', steps: 35, cfg: 7 },
+    },
+  }), false);
+  const matches = (filters: Parameters<typeof matchesComfySampler>[1]) =>
+    samplers.some((sampler) => matchesComfySampler(sampler, filters));
+
+  assert.equal(matches({ prompt: 'FOREST', sampler: 'EULER', scheduler: 'normal', steps: '20', cfg: '4.50' }), true);
+  assert.equal(matches({ prompt: 'blur', steps: '20' }), true);
+  assert.equal(matches({ sampler: 'heun', steps: '35' }), true);
+  assert.equal(matches({ prompt: 'forest', sampler: 'heun' }), false);
+  assert.equal(matches({ sampler: 'heun', scheduler: 'normal' }), false);
+  assert.equal(matches({ prompt: 'CaptionGenerator' }), false);
 });

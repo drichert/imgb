@@ -100,7 +100,7 @@ export async function hasComfyUiMetadata(path: string): Promise<boolean> {
   }
 }
 
-export async function readPngTextMetadata(path: string) {
+export async function readPngTextMetadata(path: string, onlyKey?: string) {
   const entries: { key: string; value: string; chunk: string }[] = [];
   const file = await open(path, 'r');
   try {
@@ -111,6 +111,15 @@ export async function readPngTextMetadata(path: string) {
     let next = await chunks.next();
     for (; !next.done; next = await chunks.next()) {
       const { type, length, position } = next.value;
+      if (onlyKey !== undefined) {
+        const prefix = await readBytes(file, Math.min(length, 80), position);
+        if (!prefix) {
+          incomplete = true;
+          continue;
+        }
+        const end = prefix.indexOf(0);
+        if (end < 1 || prefix.toString('latin1', 0, end) !== onlyKey) continue;
+      }
       if (length > remainingInput) {
         incomplete = true;
         continue;

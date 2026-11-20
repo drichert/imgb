@@ -4,6 +4,7 @@ import {
   Folder, Image as ImageIcon, Images, Info, Search, Workflow, X,
 } from 'lucide-react';
 import MetadataViewer from './MetadataViewer';
+import MetadataSearch from './MetadataSearch';
 
 type LibraryItem = {
   name: string;
@@ -19,6 +20,7 @@ type BrowseResult = {
   pageSize: number;
   total: number;
   hasMore: boolean;
+  incomplete?: boolean;
   items: LibraryItem[];
 };
 type ImageDetails = {
@@ -68,11 +70,12 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState('');
+  const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
   const [details, setDetails] = useState<ImageDetails | null>(null);
 
   useEffect(() => {
-    const onHashChange = () => { setFolder(currentHashPath()); setPage(0); setFilter(''); setSelected(null); };
+    const onHashChange = () => { setFolder(currentHashPath()); setSearch(''); setPage(0); setFilter(''); setSelected(null); };
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
@@ -82,19 +85,23 @@ export default function App() {
     setLoading(true);
     setError('');
     setBrowse(null);
-    const query = new URLSearchParams({ path: folder, page: String(page) });
-    fetch('/api/browse?' + query, { signal: controller.signal })
+    const query = search ? new URLSearchParams(search) : new URLSearchParams({ path: folder });
+    query.set('page', String(page));
+    fetch((search ? '/api/search?' : '/api/browse?') + query, { signal: controller.signal })
       .then(async (response) => {
-        if (!response.ok) throw new Error('Could not open this folder (' + response.status + ')');
+        if (!response.ok) {
+          const action = search ? 'Could not search the library' : 'Could not open this folder';
+          throw new Error(action + ' (' + response.status + ')');
+        }
         return await response.json() as BrowseResult;
       })
-      .then(setBrowse)
+      .then((result) => { if (!controller.signal.aborted) setBrowse(result); })
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Unable to connect to imgbae API');
       })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [folder, page]);
+  }, [folder, page, search]);
 
   useEffect(() => {
     if (!selected) { setDetails(null); return; }
@@ -117,7 +124,15 @@ export default function App() {
   const selectedIndex = images.findIndex((item) => item.path === selected);
   const selectedItem = selectedIndex >= 0 ? images[selectedIndex] : null;
 
+  function changeSearch(criteria: string) {
+    setSelected(null);
+    setPage(0);
+    setFilter('');
+    setSearch(criteria);
+  }
+
   function navigate(path: string) {
+    setSearch('');
     setSelected(null);
     setPage(0);
     setFilter('');
@@ -191,27 +206,30 @@ export default function App() {
           <div className="heading">
             <div>
               <div className="eyebrow">YOUR COLLECTION</div>
-              <h1>{folder ? folder.split('/').pop() : 'Image library'}</h1>
-              <p className="subtitle">Browse your images, explore folders, and view details.</p>
+              <h1>{search ? 'Search results' : folder ? folder.split('/').pop() : 'Image library'}</h1>
+              <p className="subtitle">{search ? 'Matching ComfyUI images across the library.' : 'Browse your images, explore folders, and view details.'}</p>
             </div>
             {folder && <button className="back-button" onClick={() => navigate(folder.split('/').slice(0, -1).join('/'))}>
               <ArrowLeft size={16} /> Up one folder
             </button>}
           </div>
 
+          <MetadataSearch active={Boolean(search)} onSearch={changeSearch} onClear={() => changeSearch('')} />
+          {browse?.incomplete && <p className="search-incomplete" role="status">Some files could not be fully searched.</p>}
+
           <div className="toolbar">
             <div className="filter-wrap"><Search size={17} /><input
               aria-label="Filter files on this page" placeholder="Filter this page..."
               value={filter} onChange={(event) => setFilter(event.target.value)}
             />{filter && <button aria-label="Clear filter" onClick={() => setFilter('')}><X size={15} /></button>}</div>
-            <span className="counter">{browse ? browse.total.toLocaleString() + ' entries · ' + imageCount + ' images on page' : 'Loading library'}</span>
+            <span className="counter">{browse ? browse.total.toLocaleString() + (search ? ' matches' : ' entries') + ' · ' + imageCount + ' images on page' : search ? 'Searching library' : 'Loading library'}</span>
           </div>
 
           {error && <div className="message error"><strong>Unable to open library</strong><p>{error}</p><small>Check that the API is running and IMGB_ROOT points to a readable folder.</small></div>}
-          {loading && !error && <div className="message">Loading folder...</div>}
+          {loading && !error && <div className="message">{search ? 'Searching the library…' : 'Loading folder...'}</div>}
           {!loading && !error && visible.length === 0 && <div className="message">
-            <ImageIcon size={28} strokeWidth={1.4}/><strong>{filter ? 'No matching items' : 'This folder is empty'}</strong>
-            <p>{filter ? 'Try a different filename filter.' : 'Navigate to another folder to find images.'}</p>
+            <ImageIcon size={28} strokeWidth={1.4}/><strong>{filter || search ? 'No matching items' : 'This folder is empty'}</strong>
+            <p>{filter ? 'Try a different filename filter.' : search ? 'Try fewer search criteria.' : 'Navigate to another folder to find images.'}</p>
           </div>}
 
           <div className="gallery">
@@ -228,6 +246,9 @@ export default function App() {
                 </div>
                 <div className="tile-info">
                   <div className="tile-name">{item.name}</div>
+                  {search && <div className="tile-location" title={item.path}>
+                    {item.path.includes('/') ? item.path.slice(0, item.path.lastIndexOf('/')) : 'Library'}
+                  </div>}
                   <div className="tile-sub">
                     {item.hasComfyUiMetadata && (
                       <img className="tile-comfy-logo" src={import.meta.env.BASE_URL + 'comfyui.svg'}

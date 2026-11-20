@@ -1,6 +1,7 @@
 import fastify from 'fastify';
 import { isIP } from 'node:net';
 import sharp from 'sharp';
+import { matchesComfySampler, readComfySamplers, type SamplerFilters } from './comfyPrompt.js';
 import { hasComfyUiMetadata, readPngTextMetadata } from './comfyui.js';
 import { createReadStream } from 'node:fs';
 import { lstat, realpath, readdir } from 'node:fs/promises';
@@ -23,6 +24,30 @@ type Item = {
 };
 type BrowseQuery = { path?: string; page?: string };
 type PathQuery = { path?: string };
+type SearchQuery = SamplerFilters & { page?: string };
+const pageSize = 96;
+
+function pageNumber(raw: string | undefined): number {
+  const page = Number(raw ?? '0');
+  return Number.isSafeInteger(page) ? Math.max(0, Math.min(page, 100000)) : 0;
+}
+
+function searchFilters(query: SearchQuery): SamplerFilters | null {
+  const filters: SamplerFilters = {};
+  for (const key of ['prompt', 'sampler', 'scheduler', 'steps', 'cfg'] as const) {
+    const raw = query[key];
+    if (raw === undefined) continue;
+    if (typeof raw !== 'string' || raw.length > 2048 || raw.includes('\0')) return null;
+    const value = raw.trim();
+    if (!value) continue;
+    if (key === 'steps' || key === 'cfg') {
+      if (!/^\+?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(value) || !Number.isFinite(Number(value))) return null;
+      if (key === 'steps' && !Number.isSafeInteger(Number(value))) return null;
+    }
+    filters[key] = value;
+  }
+  return Object.keys(filters).length ? filters : null;
+}
 
 
 function permittedBindHost(host: string): boolean {
@@ -118,9 +143,7 @@ async function main(): Promise<void> {
     const dir = await resolveSafe(request.query.path);
     if (!(await lstat(dir)).isDirectory()) throw new ForbiddenPath('Not a directory');
 
-    const pageSize = 96;
-    const rawPage = Number(request.query.page ?? '0');
-    const page = Number.isSafeInteger(rawPage) ? Math.max(0, Math.min(rawPage, 100000)) : 0;
+    const page = pageNumber(request.query.page);
     const entries = (await readdir(dir, { withFileTypes: true }))
       // Deliberately exclude symlinks in v1; the root itself may be a symlink.
       .filter((entry) => entry.isDirectory() || entry.isFile())
@@ -166,6 +189,80 @@ async function main(): Promise<void> {
       hasMore: (page + 1) * pageSize < entries.length,
       items: values.filter((value): value is Item => value !== null),
     };
+  });
+
+  const searchCache = new Map<string, {
+    version: string;
+    incomplete: boolean;
+    samplers: ReturnType<typeof readComfySamplers>;
+  }>();
+
+  async function searchSummary(file: string, size: number, modified: number, changed: number) {
+    const version = size + ':' + modified + ':' + changed;
+    const cached = searchCache.get(file);
+    if (cached?.version === version) return cached;
+    const { entries, incomplete } = await readPngTextMetadata(file, 'prompt');
+    const samplers = entries.flatMap(({ value }) => readComfySamplers(value, false));
+    const summary = { version, incomplete, samplers };
+    searchCache.delete(file);
+    if (JSON.stringify(samplers).length <= 16_384) {
+      searchCache.set(file, summary);
+      if (searchCache.size > 2048) searchCache.delete(searchCache.keys().next().value!);
+    }
+    return summary;
+  }
+
+  app.get<{ Querystring: SearchQuery }>('/api/search', async (request, reply) => {
+    const filters = searchFilters(request.query);
+    if (!filters) return reply.code(400).send({ error: 'Enter prompt text or valid sampler filters.' });
+
+    const page = pageNumber(request.query.page);
+    const items: Item[] = [];
+    const directories = [root];
+    let total = 0;
+    let incomplete = false;
+
+    while (directories.length && !reply.raw.destroyed) {
+      const directory = directories.pop()!;
+      try {
+        if (await realpath(directory) !== directory) continue;
+        const entries = await readdir(directory, { withFileTypes: true });
+        entries.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }) ||
+          (a.name < b.name ? -1 : Number(a.name > b.name)));
+        const childDirectories: string[] = [];
+        for (const entry of entries) {
+          if (reply.raw.destroyed) break;
+          const file = join(directory, entry.name);
+          if (entry.isDirectory()) {
+            childDirectories.push(file);
+            continue;
+          }
+          if (!entry.isFile() || extname(file).toLowerCase() !== '.png') continue;
+          try {
+            const stat = await lstat(file);
+            if (!stat.isFile() || await realpath(file) !== file) continue;
+            const summary = await searchSummary(file, stat.size, stat.mtimeMs, stat.ctimeMs);
+            incomplete ||= summary.incomplete;
+            if (!summary.samplers.some((sampler) => matchesComfySampler(sampler, filters))) continue;
+            if (total >= page * pageSize && items.length < pageSize) {
+              items.push({
+                name: entry.name, path: publicPath(root, file), kind: 'image',
+                size: stat.size, modifiedAt: stat.mtime.toISOString(), hasComfyUiMetadata: true,
+              });
+            }
+            total++;
+          } catch {
+            incomplete = true;
+          }
+        }
+        for (const child of childDirectories.reverse()) directories.push(child);
+      } catch (error) {
+        if (directory === root) throw error;
+        incomplete = true;
+      }
+    }
+
+    return { path: '', page, pageSize, total, hasMore: (page + 1) * pageSize < total, items, incomplete };
   });
 
   app.get<{ Querystring: PathQuery }>('/api/details', async (request) => {
