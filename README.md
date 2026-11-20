@@ -11,6 +11,7 @@ The first PR is deliberately **read-only**:
 - See file sizes, modified times and image dimensions
 - Move through image previews with the keyboard
 - Page through large directories
+- Identify likely native ComfyUI PNGs using embedded prompt and workflow fields (read-only, bounded metadata reads)
 
 There is no delete, rename, write, upload or conversion API in milestone 1.
 
@@ -36,12 +37,15 @@ Optional API environment variables: `IMGB_PORT=3001`, `IMGB_HOST=127.0.0.1`. Do 
 ```sh
 npm ci
 npm run typecheck
+npm run test
 npm run build
 ```
 
 Build output is not yet a bundled production deployment; this first milestone is aimed at local development and review.
 
 ## Roadmap
+
+See [docs/COMFYUI_METADATA.md](docs/COMFYUI_METADATA.md) for how the ComfyUI indicator works and what it does **not** prove. See [docs/AI_DEVELOPMENT.md](docs/AI_DEVELOPMENT.md) for decision and review evidence.
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) for the explicitly staged features, including ComfyUI provenance badges, metadata management, ImageMagick conversion, resizing, and GPU-accelerated AI upscaling.
 
