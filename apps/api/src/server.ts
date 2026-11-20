@@ -1,4 +1,5 @@
 import fastify from 'fastify';
+import { isIP } from 'node:net';
 import sharp from 'sharp';
 import { createReadStream } from 'node:fs';
 import { lstat, realpath, readdir } from 'node:fs/promises';
@@ -20,6 +21,15 @@ type Item = {
 };
 type BrowseQuery = { path?: string; page?: string };
 type PathQuery = { path?: string };
+
+
+function permittedBindHost(host: string): boolean {
+  if (host === '::1') return true;
+  if (isIP(host) !== 4) return false;
+  const [a, b] = host.split('.').map(Number);
+  return a === 127 || a === 10 || (a === 172 && b >= 16 && b <= 31)
+    || (a === 192 && b === 168);
+}
 
 class ForbiddenPath extends Error {}
 
@@ -159,7 +169,10 @@ async function main(): Promise<void> {
   });
 
   const port = Number(process.env.IMGB_PORT || '3001');
-  const host = process.env.IMGB_HOST || '127.0.0.1';
+  const host = process.env.IMGB_HOST?.trim() || '127.0.0.1';
+  if (!permittedBindHost(host)) {
+    throw new Error('IMGB_HOST must be loopback or a specific private IPv4 address (not 0.0.0.0 or a public address).');
+  }
   await app.listen({ port, host });
   app.log.info({ root }, 'Serving read-only image library');
 }
