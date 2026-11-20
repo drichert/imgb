@@ -3,6 +3,7 @@ import {
   ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, File as FileIcon,
   Folder, Image as ImageIcon, Images, Info, Search, Workflow, X,
 } from 'lucide-react';
+import MetadataViewer from './MetadataViewer';
 
 type LibraryItem = {
   name: string;
@@ -139,6 +140,7 @@ export default function App() {
     if (!selected) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setSelected(null);
+      if (event.target instanceof Element && event.target.closest('.metadata-viewer')) return;
       if (event.key === 'ArrowLeft') {
         event.preventDefault();
         if (selectedIndex >= 0 && images.length) setSelected(images[(selectedIndex - 1 + images.length) % images.length].path);
@@ -276,6 +278,9 @@ export default function App() {
             {(details?.hasComfyUiMetadata ?? selectedItem.hasComfyUiMetadata) && <p className="inspector-provenance-note">
               Embedded metadata can survive image edits or conversion. This indicator does not verify image history.
             </p>}
+            {selectedItem.name.toLowerCase().endsWith('.png') && (
+              <MetadataViewer key={resourceUrl('metadata', selectedItem)} url={resourceUrl('metadata', selectedItem)} />
+            )}
             <div className="inspector-note">Viewing only. This app does not modify the selected file.</div>
           </aside>
         </div>

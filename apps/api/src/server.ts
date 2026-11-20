@@ -1,7 +1,7 @@
 import fastify from 'fastify';
 import { isIP } from 'node:net';
 import sharp from 'sharp';
-import { hasComfyUiMetadata } from './comfyui.js';
+import { hasComfyUiMetadata, readPngTextMetadata } from './comfyui.js';
 import { createReadStream } from 'node:fs';
 import { lstat, realpath, readdir } from 'node:fs/promises';
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -186,6 +186,12 @@ async function main(): Promise<void> {
       pages: metadata.pages ?? null,
       hasComfyUiMetadata,
     };
+  });
+
+  app.get<{ Querystring: PathQuery }>('/api/metadata', async (request) => {
+    const { file } = await imageFile(request.query.path);
+    if (extname(file).toLowerCase() !== '.png') throw new ForbiddenPath('Metadata inspection requires a PNG');
+    return readPngTextMetadata(file);
   });
 
   app.get<{ Querystring: PathQuery }>('/api/thumbnail', async (request, reply) => {
