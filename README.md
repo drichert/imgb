@@ -11,7 +11,7 @@ The first PR is deliberately **read-only**:
 - See file sizes, modified times and image dimensions
 - Move through image previews with the keyboard
 - Page through large directories
-- Identify likely native ComfyUI PNGs using embedded prompt and workflow fields (read-only, bounded metadata reads)
+- Show a ComfyUI metadata indicator for PNGs containing recognizable embedded prompt or workflow fields (read-only, bounded metadata reads)
 
 There is no delete, rename, write, upload or conversion API in milestone 1.
 
@@ -45,9 +45,9 @@ Build output is not yet a bundled production deployment; this first milestone is
 
 ## Roadmap
 
-See [docs/COMFYUI_METADATA.md](docs/COMFYUI_METADATA.md) for how the ComfyUI indicator works and what it does **not** prove. See [docs/AI_DEVELOPMENT.md](docs/AI_DEVELOPMENT.md) for decision and review evidence.
+See [docs/COMFYUI_METADATA.md](docs/COMFYUI_METADATA.md) for how the embedded ComfyUI metadata indicator works and its detection limits. See [docs/AI_DEVELOPMENT.md](docs/AI_DEVELOPMENT.md) for decision and review evidence.
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) for the explicitly staged features, including ComfyUI provenance badges, metadata management, ImageMagick conversion, resizing, and GPU-accelerated AI upscaling.
+See [docs/ROADMAP.md](docs/ROADMAP.md) for the explicitly staged features, including ComfyUI metadata indicators, metadata management, ImageMagick conversion, resizing, and GPU-accelerated AI upscaling.
 
 ## Safety
 
