@@ -6,6 +6,7 @@ type SearchOptions = {
   schedulers: string[];
   steps: number[];
   cfg: number[];
+  nodes: string[];
   incomplete: boolean;
 };
 
@@ -19,6 +20,9 @@ export default function MetadataSearch({
   const [open, setOpen] = useState(false);
   const [options, setOptions] = useState<SearchOptions>();
   const [failed, setFailed] = useState(false);
+  const [selectedNodes, setSelectedNodes] = useState<string[]>([]);
+  const [nodeFilter, setNodeFilter] = useState('');
+  const visibleNodes = (options?.nodes ?? []).filter((node) => node.toLowerCase().includes(nodeFilter.trim().toLowerCase()));
 
   useEffect(() => {
     if (!open) return;
@@ -44,14 +48,21 @@ export default function MetadataSearch({
     for (const [key, value] of new FormData(event.currentTarget)) {
       if (typeof value === 'string' && value.trim()) criteria.set(key, value.trim());
     }
+    for (const node of selectedNodes) criteria.append('node', node);
     if (criteria.size) onSearch(criteria.toString());
     else onClear();
   }
 
   return (
-    <details className="metadata-search" onToggle={(event) => setOpen(event.currentTarget.open)}>
+    <details className="metadata-search" onToggle={(event) => {
+      if (event.target === event.currentTarget) setOpen(event.currentTarget.open);
+    }}>
       <summary><Search size={16} aria-hidden="true" /> Search ComfyUI metadata</summary>
-      <form onSubmit={submit} onReset={onClear}>
+      <form onSubmit={submit} onReset={() => {
+        setSelectedNodes([]);
+        setNodeFilter('');
+        onClear();
+      }}>
         <p>Search PNGs across the library. For Steps and CFG, type a value or choose a suggestion.</p>
         {open && !options && !failed && <p role="status">Finding filter options…</p>}
         {failed && <p role="status">Could not refresh filter options. Reopen search to try again.</p>}
@@ -79,6 +90,31 @@ export default function MetadataSearch({
             {options?.cfg?.map((value) => <option key={value} value={value} />)}
           </datalist>
         </div>
+        {(options?.nodes?.length || selectedNodes.length) > 0 && (
+          <details className="search-nodes">
+            <summary>Nodes{selectedNodes.length ? ' (' + selectedNodes.length + ' selected)' : ''}</summary>
+            <label className="node-filter">Filter node names
+              <input value={nodeFilter} onChange={(event) => setNodeFilter(event.target.value)}
+                onKeyDown={(event) => { if (event.key === 'Enter') event.preventDefault(); }} />
+            </label>
+            <p>Images must contain all selected node types.</p>
+            <div className="node-options" role="group" aria-label="Node types">
+              {visibleNodes.map((node) => (
+                <label key={node}>
+                  <input type="checkbox" checked={selectedNodes.includes(node)} onChange={(event) => {
+                    const checked = event.target.checked;
+                    setSelectedNodes((current) => checked ? [...current, node] : current.filter((type) => type !== node));
+                  }} />
+                  {node}
+                </label>
+              ))}
+              {!visibleNodes.length && <p>No matching node types.</p>}
+            </div>
+            {selectedNodes.length > 0 && (
+              <button type="button" onClick={() => setSelectedNodes([])}>Clear nodes</button>
+            )}
+          </details>
+        )}
         <div className="search-actions">
           <button type="submit">Search library</button>
           {active && <button type="reset">Clear search</button>}

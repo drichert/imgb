@@ -77,6 +77,12 @@ function promptTexts(graph: Inputs, conditioning: unknown, showSource: boolean):
 }
 
 export function readComfySamplers(prompt: string, showSource = true): Sampler[] {
+  return readComfyPrompt(prompt, showSource).samplers;
+}
+
+export function readComfyPrompt(prompt: string, showSource = true) {
+  const samplers: Sampler[] = [];
+  const nodeTypes = new Set<string>();
   let graph: unknown;
   try {
     graph = JSON.parse(prompt, (_key, value: unknown, context?: { source?: string }) => {
@@ -86,13 +92,14 @@ export function readComfySamplers(prompt: string, showSource = true): Sampler[] 
       return value;
     });
   } catch {
-    return [];
+    return { samplers, nodeTypes };
   }
-  if (!isRecord(graph)) return [];
+  if (!isRecord(graph)) return { samplers, nodeTypes };
 
-  const samplers: Sampler[] = [];
   for (const [id, node] of Object.entries(graph)) {
-    if (!isNode(node) || !['KSampler', 'KSamplerAdvanced', 'SamplerCustom', 'SamplerCustomAdvanced'].includes(node.class_type)) continue;
+    if (!isNode(node)) continue;
+    if (node.class_type) nodeTypes.add(node.class_type);
+    if (!['KSampler', 'KSamplerAdvanced', 'SamplerCustom', 'SamplerCustomAdvanced'].includes(node.class_type)) continue;
     const { inputs } = node;
     const guider = linkedNode(graph, inputs.guider)?.inputs;
     const settings = {
@@ -115,7 +122,19 @@ export function readComfySamplers(prompt: string, showSource = true): Sampler[] 
       }),
     });
   }
-  return samplers;
+  return { samplers, nodeTypes };
+}
+
+export function readWorkflowNodeTypes(workflow: string): string[] {
+  let graph: unknown;
+  try {
+    graph = JSON.parse(workflow);
+  } catch {
+    return [];
+  }
+  if (!isRecord(graph) || !Array.isArray(graph.nodes)) return [];
+  return graph.nodes.flatMap((node: unknown) =>
+    isRecord(node) && typeof node.type === 'string' && node.type ? [node.type] : []);
 }
 
 export type SamplerFilters = {

@@ -1,7 +1,7 @@
 import fastify from 'fastify';
 import { isIP } from 'node:net';
 import sharp from 'sharp';
-import { matchesComfySampler, readComfySamplers, type SamplerFilters } from './comfyPrompt.js';
+import { matchesComfySampler, readComfyPrompt, readWorkflowNodeTypes, type SamplerFilters } from './comfyPrompt.js';
 import { hasComfyUiMetadata, readPngTextMetadata } from './comfyui.js';
 import { createReadStream } from 'node:fs';
 import { lstat, realpath, readdir } from 'node:fs/promises';
@@ -24,7 +24,7 @@ type Item = {
 };
 type BrowseQuery = { path?: string; page?: string };
 type PathQuery = { path?: string };
-type SearchQuery = SamplerFilters & { page?: string; options?: string; presence?: string };
+type SearchQuery = SamplerFilters & { page?: string; options?: string; presence?: string; node?: string | string[] };
 const pageSize = 96;
 
 function pageNumber(raw: string | undefined): number {
@@ -49,7 +49,7 @@ function searchFilters(query: SearchQuery): SamplerFilters | null {
     if ((key === 'steps' || key === 'cfg') && searchNumber(value, key) === undefined) return null;
     filters[key] = value;
   }
-  return Object.keys(filters).length ? filters : null;
+  return filters;
 }
 
 
@@ -197,18 +197,32 @@ async function main(): Promise<void> {
   const searchCache = new Map<string, {
     version: string;
     incomplete: boolean;
-    samplers: ReturnType<typeof readComfySamplers>;
+    samplers: ReturnType<typeof readComfyPrompt>['samplers'];
+    nodeTypes: Set<string>;
   }>();
 
   async function searchSummary(file: string, size: number, modified: number, changed: number) {
     const version = size + ':' + modified + ':' + changed;
     const cached = searchCache.get(file);
     if (cached?.version === version) return cached;
-    const { entries, incomplete } = await readPngTextMetadata(file, 'prompt');
-    const samplers = entries.flatMap(({ value }) => readComfySamplers(value, false));
-    const summary = { version, incomplete, samplers };
+    const { entries, incomplete } = await readPngTextMetadata(file, ['prompt', 'workflow']);
+    const samplers: ReturnType<typeof readComfyPrompt>['samplers'] = [];
+    const nodeTypes = new Set<string>();
+    for (const { key, value } of entries) {
+      if (key !== 'prompt') continue;
+      const prompt = readComfyPrompt(value, false);
+      for (const sampler of prompt.samplers) samplers.push(sampler);
+      for (const type of prompt.nodeTypes) nodeTypes.add(type);
+    }
+    if (!nodeTypes.size) {
+      for (const { key, value } of entries) {
+        if (key !== 'workflow') continue;
+        for (const type of readWorkflowNodeTypes(value)) nodeTypes.add(type);
+      }
+    }
+    const summary = { version, incomplete, samplers, nodeTypes };
     searchCache.delete(file);
-    if (JSON.stringify(samplers).length <= 16_384) {
+    if (JSON.stringify([samplers, [...nodeTypes]]).length <= 16_384) {
       searchCache.set(file, summary);
       if (searchCache.size > 2048) searchCache.delete(searchCache.keys().next().value!);
     }
@@ -219,10 +233,17 @@ async function main(): Promise<void> {
     const filters = searchFilters(request.query);
     const optionsOnly = request.query.options === '1';
     const presenceOnly = request.query.presence === '1';
-    if (!presenceOnly && !optionsOnly && !filters) {
-      return reply.code(400).send({ error: 'Enter prompt text or valid sampler filters.' });
+    const requestedNodes = Array.isArray(request.query.node) ? request.query.node :
+      request.query.node === undefined ? [] : [request.query.node];
+    const hasSamplerFilters = filters !== null && Object.keys(filters).length > 0;
+    if (!presenceOnly && !optionsOnly && (
+      !filters || (!hasSamplerFilters && !requestedNodes.length) ||
+      requestedNodes.some((name) => !name.trim() || name.length > 2048 || name.includes('\0'))
+    )) {
+      return reply.code(400).send({ error: 'Enter prompt text or select valid metadata filters.' });
     }
 
+    const nodeOptions = new Set<string>();
     const samplers = new Map<string, string>();
     const schedulers = new Map<string, string>();
     const steps = new Set<number>();
@@ -261,6 +282,7 @@ async function main(): Promise<void> {
             const summary = await searchSummary(file, stat.size, stat.mtimeMs, stat.ctimeMs);
             incomplete ||= summary.incomplete;
             if (optionsOnly) {
+              for (const type of summary.nodeTypes) nodeOptions.add(type);
               for (const { settings } of summary.samplers) {
                 for (const { key, value } of settings) {
                   const names = key === 'sampler_name' ? samplers : key === 'scheduler' ? schedulers : undefined;
@@ -274,7 +296,8 @@ async function main(): Promise<void> {
               }
               continue;
             }
-            if (!filters || !summary.samplers.some((sampler) => matchesComfySampler(sampler, filters))) continue;
+            if (!requestedNodes.every((type) => summary.nodeTypes.has(type))) continue;
+            if (hasSamplerFilters && !summary.samplers.some((sampler) => matchesComfySampler(sampler, filters))) continue;
             if (total >= page * pageSize && items.length < pageSize) {
               items.push({
                 name: entry.name, path: publicPath(root, file), kind: 'image',
@@ -299,7 +322,8 @@ async function main(): Promise<void> {
       const sortNumbers = (numbers: Set<number>) => [...numbers].sort((a, b) => a - b);
       return {
         samplers: sortNames(samplers), schedulers: sortNames(schedulers),
-        steps: sortNumbers(steps), cfg: sortNumbers(cfg), incomplete,
+        steps: sortNumbers(steps), cfg: sortNumbers(cfg),
+        nodes: [...nodeOptions].sort((a, b) => a.localeCompare(b)), incomplete,
       };
     }
     return { path: '', page, pageSize, total, hasMore: (page + 1) * pageSize < total, items, incomplete };

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { deflateSync } from 'node:zlib';
-import { matchesComfySampler, readComfySamplers } from './comfyPrompt.js';
+import { matchesComfySampler, readComfyPrompt, readComfySamplers, readWorkflowNodeTypes } from './comfyPrompt.js';
 import { hasComfyUiMetadata, readPngTextMetadata } from './comfyui.js';
 
 function chunk(type: string, data: Buffer = Buffer.alloc(0)): Buffer {
@@ -163,4 +163,18 @@ test('matches prompt and sampler settings from the same ComfyUI pass', () => {
   assert.equal(matches({ prompt: 'forest', sampler: 'heun' }), false);
   assert.equal(matches({ sampler: 'heun', scheduler: 'normal' }), false);
   assert.equal(matches({ prompt: 'CaptionGenerator' }), false);
+});
+
+test('reads node types from saved prompt and editor graphs', () => {
+  const { nodeTypes, samplers } = readComfyPrompt(JSON.stringify({
+    '1': { class_type: 'LoadImage', inputs: {} },
+    '2': { class_type: 'Acme Custom Node', inputs: {} },
+    '3': { class_type: 'LoadImage', inputs: {} },
+    extra: { title: 'Other metadata' },
+  }));
+  assert.deepEqual([...nodeTypes], ['LoadImage', 'Acme Custom Node']);
+  assert.deepEqual(samplers, []);
+  assert.deepEqual(readWorkflowNodeTypes('{"nodes":[{"type":"SaveImage"},{"type":"LoadImage"},null]}'),
+    ['SaveImage', 'LoadImage']);
+  assert.deepEqual(readWorkflowNodeTypes('broken JSON'), []);
 });
