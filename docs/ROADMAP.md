@@ -13,6 +13,8 @@ The user-facing product should become useful **before** any advanced processing 
 
 ## 2. Metadata and provenance
 - [x] PNG ComfyUI metadata presence indicator in grid and viewer (recognized prompt or workflow field)
+- [x] On-demand ComfyUI prompt/settings and node-type search (not yet SQLite-indexed)
+- [x] Readable and raw embedded PNG text metadata inspection
 - [ ] Reliable edit/derivation lineage (separate feature, not inferred from the metadata indicator)
 - [ ] Inspect ComfyUI prompt and workflow metadata; export workflow JSON
 - [ ] EXIF/IPTC/XMP and PNG metadata inspection

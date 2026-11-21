@@ -12,6 +12,7 @@ The first PR is deliberately **read-only**:
 - Move through image previews with the keyboard
 - Page through large directories
 - Show a ComfyUI metadata indicator for PNGs containing recognizable embedded prompt or workflow fields (read-only, bounded metadata reads)
+- Inspect embedded PNG text metadata (readable or raw) and search the collection by ComfyUI prompt, sampler, scheduler, steps, CFG and node types (on-demand scan)
 
 There is no delete, rename, write, upload or conversion API in milestone 1.
 
