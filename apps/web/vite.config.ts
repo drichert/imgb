@@ -13,9 +13,15 @@ function permittedHost(host: string): boolean {
     || (a === 192 && b === 168);
 }
 
-const host = env.IMGB_WEB_HOST?.trim() || '127.0.0.1';
+const host = env.IMGBAE_WEB_HOST?.trim() || '127.0.0.1';
 if (!permittedHost(host)) {
-  throw new Error('IMGB_WEB_HOST must be loopback or a specific private IPv4 address (not 0.0.0.0 or a public address).');
+  throw new Error('IMGBAE_WEB_HOST must be loopback or a specific private IPv4 address (not 0.0.0.0 or a public address).');
+}
+
+// Keep the development proxy in sync when the API port is overridden.
+const apiPort = Number(env.IMGBAE_PORT || '3001');
+if (!Number.isInteger(apiPort) || apiPort < 1 || apiPort > 65535) {
+  throw new Error('IMGBAE_PORT must be an integer between 1 and 65535.');
 }
 
 export default defineConfig({
@@ -24,6 +30,6 @@ export default defineConfig({
     host,
     port: 5173,
     strictPort: true,
-    proxy: { '/api': 'http://127.0.0.1:3001' },
+    proxy: { '/api': `http://127.0.0.1:${apiPort}` },
   },
 });

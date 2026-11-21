@@ -3,7 +3,7 @@ import { isIP } from 'node:net';
 import sharp from 'sharp';
 import { matchesComfySampler, readComfyPrompt, readWorkflowNodeTypes, type SamplerFilters } from './comfyPrompt.js';
 import { hasComfyUiMetadata, readPngTextMetadata } from './comfyui.js';
-import { createReadStream } from 'node:fs';
+import { createReadStream, type Stats } from 'node:fs';
 import { lstat, realpath, readdir } from 'node:fs/promises';
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
@@ -22,7 +22,9 @@ type Item = {
   modifiedAt: string;
   hasComfyUiMetadata: boolean;
 };
-type BrowseQuery = { path?: string; page?: string };
+type SortKey = 'name' | 'modified' | 'size';
+type BrowseQuery = { path?: string; page?: string; sort?: string; order?: string };
+const sortKeys: readonly SortKey[] = ['name', 'modified', 'size'];
 type PathQuery = { path?: string };
 type SearchQuery = SamplerFilters & { page?: string; options?: string; presence?: string; node?: string | string[] };
 const pageSize = 96;
@@ -89,13 +91,13 @@ function publicPath(root: string, file: string): string {
 }
 
 async function main(): Promise<void> {
-  const configuredRoot = process.env.IMGB_ROOT;
+  const configuredRoot = process.env.IMGBAE_ROOT;
   if (!configuredRoot || !isAbsolute(configuredRoot)) {
-    throw new Error('IMGB_ROOT must be an absolute path to your images or mounted share.');
+    throw new Error('IMGBAE_ROOT must be an absolute path to your images or mounted share.');
   }
   const root = await realpath(configuredRoot);
   const rootStat = await lstat(root);
-  if (!rootStat.isDirectory()) throw new Error('IMGB_ROOT must refer to a directory.');
+  if (!rootStat.isDirectory()) throw new Error('IMGBAE_ROOT must refer to a directory.');
 
   async function resolveSafe(input: string | undefined): Promise<string> {
     if ((input ?? '').length > 4096 || (input ?? '').includes('\0')) {
@@ -147,7 +149,9 @@ async function main(): Promise<void> {
     if (!(await lstat(dir)).isDirectory()) throw new ForbiddenPath('Not a directory');
 
     const page = pageNumber(request.query.page);
-    const entries = (await readdir(dir, { withFileTypes: true }))
+    const sort = sortKeys.find((key) => key === request.query.sort) ?? 'name';
+    const direction = request.query.order === 'desc' ? -1 : 1;
+    const listed = (await readdir(dir, { withFileTypes: true }))
       // Deliberately exclude symlinks in v1; the root itself may be a symlink.
       .filter((entry) => entry.isDirectory() || entry.isFile())
       .map((entry) => ({
@@ -156,17 +160,29 @@ async function main(): Promise<void> {
           ? 'directory' as const
           : imageMime[extname(entry.name).toLowerCase()]
             ? 'image' as const : 'file' as const,
-      }))
+      }));
+    // Date and size ordering must stat every entry before paging; name ordering avoids that.
+    const stats = sort === 'name' ? null
+      : await mapLimited(listed, 16, ({ entry }) => lstat(join(dir, entry.name)).catch(() => null));
+    const byKey = (a: Stats | null, b: Stats | null): number =>
+      !a || !b ? 0
+        : sort === 'modified' ? a.mtimeMs - b.mtimeMs
+          : sort === 'size' && a.isFile() && b.isFile() ? a.size - b.size : 0;
+    const entries = listed
+      .map((value, i) => ({ ...value, stat: stats?.[i] ?? null }))
+      // The directory may change while it is being listed.
+      .filter((value) => !stats || value.stat)
       .sort((a, b) =>
         (a.kind === 'directory' ? 0 : 1) - (b.kind === 'directory' ? 0 : 1)
-        || a.entry.name.localeCompare(b.entry.name, undefined, { numeric: true, sensitivity: 'base' })
+        || direction * (byKey(a.stat, b.stat)
+          || a.entry.name.localeCompare(b.entry.name, undefined, { numeric: true, sensitivity: 'base' }))
       );
 
     const slice = entries.slice(page * pageSize, (page + 1) * pageSize);
-    const values = await mapLimited(slice, 8, async ({ entry, kind }): Promise<Item | null> => {
+    const values = await mapLimited(slice, 8, async ({ entry, kind, stat: listedStat }): Promise<Item | null> => {
       const file = join(dir, entry.name);
       try {
-        const stat = await lstat(file);
+        const stat = listedStat ?? await lstat(file);
         if (!stat.isDirectory() && !stat.isFile()) return null;
         let hasComfyUiMetadata = false;
         if (kind === 'image') {
@@ -188,7 +204,7 @@ async function main(): Promise<void> {
 
     return {
       path: publicPath(root, dir),
-      page, pageSize, total: entries.length,
+      page, pageSize, total: entries.length, sort, order: direction === -1 ? 'desc' : 'asc',
       hasMore: (page + 1) * pageSize < entries.length,
       items: values.filter((value): value is Item => value !== null),
     };
@@ -381,10 +397,13 @@ async function main(): Promise<void> {
     return reply.type(mime).header('Cache-Control', 'private, max-age=300').send(createReadStream(file));
   });
 
-  const port = Number(process.env.IMGB_PORT || '3001');
-  const host = process.env.IMGB_HOST?.trim() || '127.0.0.1';
+  const port = Number(process.env.IMGBAE_PORT || '3001');
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error('IMGBAE_PORT must be an integer between 1 and 65535.');
+  }
+  const host = process.env.IMGBAE_HOST?.trim() || '127.0.0.1';
   if (!permittedBindHost(host)) {
-    throw new Error('IMGB_HOST must be loopback or a specific private IPv4 address (not 0.0.0.0 or a public address).');
+    throw new Error('IMGBAE_HOST must be loopback or a specific private IPv4 address (not 0.0.0.0 or a public address).');
   }
   await app.listen({ port, host });
   app.log.info({ root }, 'Serving read-only image library');
