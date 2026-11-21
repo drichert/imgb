@@ -2,7 +2,7 @@ import fastify from 'fastify';
 import { isIP } from 'node:net';
 import sharp from 'sharp';
 import { hasComfyUiMetadata } from './comfyui.js';
-import { createReadStream } from 'node:fs';
+import { createReadStream, type Stats } from 'node:fs';
 import { lstat, realpath, readdir } from 'node:fs/promises';
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
@@ -21,7 +21,9 @@ type Item = {
   modifiedAt: string;
   hasComfyUiMetadata: boolean;
 };
-type BrowseQuery = { path?: string; page?: string };
+type SortKey = 'name' | 'modified' | 'size';
+type BrowseQuery = { path?: string; page?: string; sort?: string; order?: string };
+const sortKeys: readonly SortKey[] = ['name', 'modified', 'size'];
 type PathQuery = { path?: string };
 
 
@@ -121,7 +123,9 @@ async function main(): Promise<void> {
     const pageSize = 96;
     const rawPage = Number(request.query.page ?? '0');
     const page = Number.isSafeInteger(rawPage) ? Math.max(0, Math.min(rawPage, 100000)) : 0;
-    const entries = (await readdir(dir, { withFileTypes: true }))
+    const sort = sortKeys.find((key) => key === request.query.sort) ?? 'name';
+    const direction = request.query.order === 'desc' ? -1 : 1;
+    const listed = (await readdir(dir, { withFileTypes: true }))
       // Deliberately exclude symlinks in v1; the root itself may be a symlink.
       .filter((entry) => entry.isDirectory() || entry.isFile())
       .map((entry) => ({
@@ -130,17 +134,29 @@ async function main(): Promise<void> {
           ? 'directory' as const
           : imageMime[extname(entry.name).toLowerCase()]
             ? 'image' as const : 'file' as const,
-      }))
+      }));
+    // Date and size ordering must stat every entry before paging; name ordering avoids that.
+    const stats = sort === 'name' ? null
+      : await mapLimited(listed, 16, ({ entry }) => lstat(join(dir, entry.name)).catch(() => null));
+    const byKey = (a: Stats | null, b: Stats | null): number =>
+      !a || !b ? 0
+        : sort === 'modified' ? a.mtimeMs - b.mtimeMs
+          : sort === 'size' && a.isFile() && b.isFile() ? a.size - b.size : 0;
+    const entries = listed
+      .map((value, i) => ({ ...value, stat: stats?.[i] ?? null }))
+      // The directory may change while it is being listed.
+      .filter((value) => !stats || value.stat)
       .sort((a, b) =>
         (a.kind === 'directory' ? 0 : 1) - (b.kind === 'directory' ? 0 : 1)
-        || a.entry.name.localeCompare(b.entry.name, undefined, { numeric: true, sensitivity: 'base' })
+        || direction * (byKey(a.stat, b.stat)
+          || a.entry.name.localeCompare(b.entry.name, undefined, { numeric: true, sensitivity: 'base' }))
       );
 
     const slice = entries.slice(page * pageSize, (page + 1) * pageSize);
-    const values = await mapLimited(slice, 8, async ({ entry, kind }): Promise<Item | null> => {
+    const values = await mapLimited(slice, 8, async ({ entry, kind, stat: listedStat }): Promise<Item | null> => {
       const file = join(dir, entry.name);
       try {
-        const stat = await lstat(file);
+        const stat = listedStat ?? await lstat(file);
         if (!stat.isDirectory() && !stat.isFile()) return null;
         let hasComfyUiMetadata = false;
         if (kind === 'image') {
@@ -162,7 +178,7 @@ async function main(): Promise<void> {
 
     return {
       path: publicPath(root, dir),
-      page, pageSize, total: entries.length,
+      page, pageSize, total: entries.length, sort, order: direction === -1 ? 'desc' : 'asc',
       hasMore: (page + 1) * pageSize < entries.length,
       items: values.filter((value): value is Item => value !== null),
     };

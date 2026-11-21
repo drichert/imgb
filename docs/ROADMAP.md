@@ -6,6 +6,7 @@ The user-facing product should become useful **before** any advanced processing 
 - [x] Filesystem root configuration, for local folders or mounted remote shares
 - [x] Read-only folder browsing with paginated results
 - [x] Image thumbnails and larger viewer, with keyboard navigation
+- [x] Sort folder listings by name, modified date or file size (ascending or descending)
 - [x] Basic image properties: dimensions, format, file size, modified date
 - [ ] Visual QA on an actual network-mounted image collection
 - [ ] Authenticated LAN access / production packaging (separate follow-up)
