@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, File as FileIcon,
+  ArrowDownWideNarrow, ArrowLeft, ArrowRight, ArrowUpNarrowWide, ChevronLeft, ChevronRight, File as FileIcon,
   Folder, Image as ImageIcon, Images, Info, Search, Workflow, X,
 } from 'lucide-react';
 
@@ -12,6 +12,8 @@ type LibraryItem = {
   modifiedAt: string;
   hasComfyUiMetadata: boolean;
 };
+type SortKey = 'name' | 'modified' | 'size';
+type SortOrder = 'asc' | 'desc';
 type BrowseResult = {
   path: string;
   page: number;
@@ -33,6 +35,17 @@ type ImageDetails = {
   hasComfyUiMetadata: boolean;
 };
 
+const sortLabels: Record<SortKey, string> = { name: 'Name', modified: 'Date modified', size: 'File size' };
+
+function storedSort(): { sort: SortKey; order: SortOrder } {
+  try {
+    const saved = JSON.parse(localStorage.getItem('imgbae.sort') || '{}') as { sort?: string; order?: string };
+    return {
+      sort: saved.sort && saved.sort in sortLabels ? saved.sort as SortKey : 'name',
+      order: saved.order === 'desc' ? 'desc' : 'asc',
+    };
+  } catch { return { sort: 'name', order: 'asc' }; }
+}
 function currentHashPath(): string {
   try { return decodeURIComponent(window.location.hash.replace(/^#\/?/, '')); }
   catch { return ''; }
@@ -67,6 +80,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState('');
+  const [{ sort, order }, setSorting] = useState(storedSort);
   const [selected, setSelected] = useState<string | null>(null);
   const [details, setDetails] = useState<ImageDetails | null>(null);
 
@@ -81,7 +95,7 @@ export default function App() {
     setLoading(true);
     setError('');
     setBrowse(null);
-    const query = new URLSearchParams({ path: folder, page: String(page) });
+    const query = new URLSearchParams({ path: folder, page: String(page), sort, order });
     fetch('/api/browse?' + query, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error('Could not open this folder (' + response.status + ')');
@@ -93,7 +107,7 @@ export default function App() {
       })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [folder, page]);
+  }, [folder, page, sort, order]);
 
   useEffect(() => {
     if (!selected) { setDetails(null); return; }
@@ -128,6 +142,12 @@ export default function App() {
     setFilter('');
     setPage(next);
     window.scrollTo(0, 0);
+  }
+  function changeSort(next: { sort: SortKey; order: SortOrder }) {
+    setSelected(null);
+    setPage(0);
+    setSorting(next);
+    try { localStorage.setItem('imgbae.sort', JSON.stringify(next)); } catch { /* Sorting still applies for this visit. */ }
   }
   function moveViewer(direction: number) {
     if (!images.length || selectedIndex < 0) return;
@@ -202,6 +222,17 @@ export default function App() {
               aria-label="Filter files on this page" placeholder="Filter this page..."
               value={filter} onChange={(event) => setFilter(event.target.value)}
             />{filter && <button aria-label="Clear filter" onClick={() => setFilter('')}><X size={15} /></button>}</div>
+            <div className="sort-wrap">
+              <select aria-label="Sort by" value={sort}
+                onChange={(event) => changeSort({ sort: event.target.value as SortKey, order })}>
+                {(Object.keys(sortLabels) as SortKey[]).map((key) => <option key={key} value={key}>{sortLabels[key]}</option>)}
+              </select>
+              <button aria-label={order === 'asc' ? 'Sorted ascending; switch to descending' : 'Sorted descending; switch to ascending'}
+                title={order === 'asc' ? 'Ascending' : 'Descending'}
+                onClick={() => changeSort({ sort, order: order === 'asc' ? 'desc' : 'asc' })}>
+                {order === 'asc' ? <ArrowUpNarrowWide size={16} /> : <ArrowDownWideNarrow size={16} />}
+              </button>
+            </div>
             <span className="counter">{browse ? browse.total.toLocaleString() + ' entries · ' + imageCount + ' images on page' : 'Loading library'}</span>
           </div>
 
