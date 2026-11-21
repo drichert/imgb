@@ -21,6 +21,6 @@ Compressed text is inflated from a bounded prefix. The detector does not validat
 
 Run `npm ci && npm run typecheck && npm run test && npm run build`.
 
-Parser tests cover full, partial, absent, malformed and animated-PNG-style metadata using synthetic fixtures. Manual testing with actual ComfyUI SaveImage outputs, a metadata-stripped image, and an edited image retaining metadata remains necessary. Network-share responsiveness is also unverified.
+Parser tests cover full, partial, absent, malformed and animated-PNG-style metadata using synthetic fixtures. Manual testing with actual ComfyUI SaveImage outputs, a metadata-stripped image, and an edited image retaining metadata remains necessary. Network-share responsiveness is also unverified; that work is deferred (see [NETWORK_SHARES.md](NETWORK_SHARES.md)).
 
 A future metadata inspector can expose exact recognized fields and workflow JSON. A separate provenance system may track transformations, but that should not change the meaning of this badge.
