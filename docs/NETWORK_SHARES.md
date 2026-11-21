@@ -1,12 +1,12 @@
 # Network shares — deferred handoff notes
 
-**Deferred:** 2026-11-21, by the development director. Current work targets the local filesystem. Network-mounted libraries (NFS, SMB/CIFS, sshfs) still work the same way, by pointing `IMGB_ROOT` at the mount, but nobody has tested them or tuned imgbae for them. Don't add network-share checks to test plans or treat share performance as a blocker until this work resumes.
+**Deferred:** 2026-11-21, by the development director. Current work targets the local filesystem. Network-mounted libraries (NFS, SMB/CIFS, sshfs) still work the same way, by pointing `IMGBAE_ROOT` at the mount, but nobody has tested them or tuned imgbae for them. Don't add network-share checks to test plans or treat share performance as a blocker until this work resumes.
 
 This document is the starting point for whoever picks that work back up.
 
 ## What already exists
 
-- **Mount, don't proxy.** imgbae reads a mounted directory and runs nothing on the NAS. `IMGB_ROOT` is resolved with `realpath`, and every request path is checked to stay inside it.
+- **Mount, don't proxy.** imgbae reads a mounted directory and runs nothing on the NAS. `IMGBAE_ROOT` is resolved with `realpath`, and every request path is checked to stay inside it.
 - **Symlinks are skipped** in folder listings. The root itself may be a symlink.
 - **Concurrency is capped** so a share isn't flooded with random reads. Each browse page stats and inspects at most 8 items at once (`mapLimited` in [server.ts](../apps/api/src/server.ts)).
 - **ComfyUI metadata detection reads a bounded prefix** (at most 1 KiB per candidate chunk and 256 chunks, never pixel data). Results go in a process-local cache of 2048 entries keyed by path, size and mtime. See [COMFYUI_METADATA.md](COMFYUI_METADATA.md).

@@ -36,7 +36,7 @@ The user-facing product should become useful **before** any advanced processing 
 - [ ] Keep processing device independent of storage location
 
 ## Deferred: network shares
-Local filesystem comes first. Network-mounted libraries still work through `IMGB_ROOT` but are untested and untuned. Handoff notes: [NETWORK_SHARES.md](NETWORK_SHARES.md).
+Local filesystem comes first. Network-mounted libraries still work through `IMGBAE_ROOT` but are untested and untuned. Handoff notes: [NETWORK_SHARES.md](NETWORK_SHARES.md).
 - [ ] Visual QA on an actual network-mounted image collection
 - [ ] Measure browse, sort and thumbnail latency on large shared folders
 - [ ] Handle unavailable mounts and permission errors distinctly from unreadable files

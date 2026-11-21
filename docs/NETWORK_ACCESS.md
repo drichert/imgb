@@ -4,7 +4,7 @@ The current development environment is not a hardened production server. It is i
 
 ## Defaults
 
-- Web interface (Vite): binds to `127.0.0.1:5173` unless `IMGB_WEB_HOST` selects a specific private LAN IPv4 address.
+- Web interface (Vite): binds to `127.0.0.1:5173` unless `IMGBAE_WEB_HOST` selects a specific private LAN IPv4 address.
 - Fastify API: binds to `127.0.0.1:3001` unless explicitly configured. Keep it on loopback; Vite proxies `/api` to it.
 - Both processes reject wildcard and public-address host bindings. Hostnames and public IPs are not accepted. `::1` is accepted for local-only use.
 - Neither process configures router port forwarding, UPnP, a public proxy, or a cloud tunnel.
@@ -13,8 +13,8 @@ The current development environment is not a hardened production server. It is i
 ## Trusted-LAN development access
 
 1. Identify the machine's private LAN IPv4 address (for example, `192.168.1.50`).
-2. Run `IMGB_ROOT=/absolute/path/to/images IMGB_WEB_HOST=192.168.1.50 npm run dev`.
-3. Open `http://192.168.1.50:5173` on another device on that LAN. Leave `IMGB_HOST` unset so the API stays on loopback.
+2. Run `IMGBAE_ROOT=/absolute/path/to/images IMGBAE_WEB_HOST=192.168.1.50 npm run dev`.
+3. Open `http://192.168.1.50:5173` on another device on that LAN. Leave `IMGBAE_HOST` unset so the API stays on loopback.
 4. If a host firewall is enabled, permit inbound TCP 5173 only from the trusted LAN CIDR, not from all sources. Do not create router port forwarding or UPnP exceptions.
 5. On a separate network (such as cellular), the service should not respond. This is a manual deployment check, not a security guarantee.
 
@@ -33,8 +33,8 @@ Before rename, move, permanent deletion, batch edits or metadata writes become a
 ## Verification checklist (manual)
 
 - [ ] Default dev processes listen only on 127.0.0.1.
-- [ ] Setting `IMGB_WEB_HOST` to the machine's specific private IPv4 binds only that interface.
-- [ ] `IMGB_WEB_HOST=0.0.0.0` and `IMGB_HOST=0.0.0.0` fail with a clear error.
+- [ ] Setting `IMGBAE_WEB_HOST` to the machine's specific private IPv4 binds only that interface.
+- [ ] `IMGBAE_WEB_HOST=0.0.0.0` and `IMGBAE_HOST=0.0.0.0` fail with a clear error.
 - [ ] An ordinary browser on the trusted LAN can browse images only after explicit LAN binding.
 - [ ] A client outside the trusted LAN cannot reach the service under the configured router/firewall rules.
 - [ ] No delete/mutation routes exist in this milestone.

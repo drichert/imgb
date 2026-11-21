@@ -236,7 +236,7 @@ export default function App() {
             <span className="counter">{browse ? browse.total.toLocaleString() + ' entries · ' + imageCount + ' images on page' : 'Loading library'}</span>
           </div>
 
-          {error && <div className="message error"><strong>Unable to open library</strong><p>{error}</p><small>Check that the API is running and IMGB_ROOT points to a readable folder.</small></div>}
+          {error && <div className="message error"><strong>Unable to open library</strong><p>{error}</p><small>Check that the API is running and IMGBAE_ROOT points to a readable folder.</small></div>}
           {loading && !error && <div className="message">Loading folder...</div>}
           {!loading && !error && visible.length === 0 && <div className="message">
             <ImageIcon size={28} strokeWidth={1.4}/><strong>{filter ? 'No matching items' : 'This folder is empty'}</strong>
