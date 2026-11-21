@@ -7,7 +7,6 @@ The user-facing product should become useful **before** any advanced processing 
 - [x] Read-only folder browsing with paginated results
 - [x] Image thumbnails and larger viewer, with keyboard navigation
 - [x] Basic image properties: dimensions, format, file size, modified date
-- [ ] Visual QA on an actual network-mounted image collection
 - [ ] Authenticated LAN access / production packaging (separate follow-up)
 - [x] Explicit private-interface LAN development binding; wildcard/public IP binding refused
 
@@ -34,6 +33,12 @@ The user-facing product should become useful **before** any advanced processing 
 - [ ] GPU autodetection, compatible inference backend selection and CPU fallback
 - [ ] VRAM-aware tiling, progress and cancellation
 - [ ] Keep processing device independent of storage location
+
+## Deferred: network shares
+Local filesystem comes first. Network-mounted libraries still work through `IMGB_ROOT` but are untested and untuned. Handoff notes: [NETWORK_SHARES.md](NETWORK_SHARES.md).
+- [ ] Visual QA on an actual network-mounted image collection
+- [ ] Measure browse, sort and thumbnail latency on large shared folders
+- [ ] Handle unavailable mounts and permission errors distinctly from unreadable files
 
 ### Decisions
 

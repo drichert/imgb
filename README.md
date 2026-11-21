@@ -38,7 +38,7 @@ Replace `192.168.1.50` with the actual address on the machine running imgbae. Fr
 
 The server refuses wildcard (`0.0.0.0`) and public-IP bindings for both API and development frontend. These checks reduce accidental exposure, but **cannot defeat router port-forwarding, a publicly reachable reverse proxy, a tunnel, or an insecure host firewall**. Do not enable those routes. The initial read-only app has no authentication, so every permitted LAN user can view the library. Require authentication and authorization **before** enabling rename, move, delete or metadata writes. See [network-access guidance](docs/NETWORK_ACCESS.md).
 
-If your images live on another LAN machine, **mount the remote share** on the machine running the API (NFS, SMB/CIFS, sshfs, etc.), then point `IMGB_ROOT` to the mount. The app does not require an agent on your NAS.
+If your images live on another LAN machine, **mount the remote share** on the machine running the API (NFS, SMB/CIFS, sshfs, etc.), then point `IMGB_ROOT` to the mount. The app does not require an agent on your NAS. Current development targets local disks, so share performance hasn't been tested yet; see [docs/NETWORK_SHARES.md](docs/NETWORK_SHARES.md).
 
 Optional API environment variables: `IMGB_PORT=3001`, `IMGB_HOST=127.0.0.1`. Prefer keeping the API on loopback and using the web proxy for trusted-LAN access. Do **not** expose the unauthenticated API or development server to the internet or an untrusted LAN. Authentication and production deployment are separate milestones. Prefer an SSH tunnel for remote access outside your home LAN.
 

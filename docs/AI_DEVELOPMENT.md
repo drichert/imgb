@@ -24,10 +24,19 @@ The human development director establishes priorities, aesthetic and product dir
 
 **Verification:** Synthetic parser tests are included. Typecheck, build, visual QA and tests on real network-mounted images must still be verified before accepting this PR.
 
+### 2026-11-21 — Prioritize the local filesystem; defer network shares
+
+**Human direction:** Prioritize local filesystem libraries. Network-share verification is not needed yet; the director plans to return to network shares later.
+
+**AI implementation proposal:** Remove network-share checks from current test plans and the milestone 1 checklist. Collect known cost points, open questions and candidate remedies in [NETWORK_SHARES.md](NETWORK_SHARES.md) so the work can resume without rediscovery.
+
+**Alternatives not chosen:** removing mounted-share support from the README (it still works, just untested); choosing a remedy such as a thumbnail cache before measuring.
+
+**Verification:** Documentation only.
+
 ## Next review
 
 - Check images with either a prompt or workflow field, edited copies retaining metadata, and metadata-stripped PNGs.
-- Verify responsiveness on a mounted network share.
 - Define durable provenance before enabling transformations and permanent deletion.
 - Maintain project-specific LAN security and authentication gates for future write operations.
 
